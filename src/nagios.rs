@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Read};
 use std::path::Path;
+use std::{error, fmt};
 
 type NagiosInfo = HashMap<String, String>;
 type NagiosProgram = HashMap<String, String>;
@@ -33,16 +34,14 @@ enum ParseState {
     Outside,
 }
 
-// TODO エラーをちゃんと独自のものに
-
 impl NagiosStatus {
-    pub fn parse_file<P: AsRef<Path>>(path: P) -> io::Result<NagiosStatus> {
+    pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<NagiosStatus> {
         let file = File::open(path)?;
         let buf = io::BufReader::new(file);
-        Ok(NagiosStatus::parse(buf))
+        NagiosStatus::parse(buf)
     }
 
-    fn parse<R: Read>(buf: io::BufReader<R>) -> NagiosStatus {
+    fn parse<R: Read>(buf: io::BufReader<R>) -> Result<NagiosStatus> {
         let lines = buf
             .lines()
             .filter(|r| r.is_ok())
@@ -78,21 +77,24 @@ impl NagiosStatus {
                         "host {" => current_state = ParseState::WithinBlock(BlockType::Host),
                         "service {" => current_state = ParseState::WithinBlock(BlockType::Service),
                         _ => {
-                            // TODO return Error
-                            panic!()
+                            return Err(ParseError::UnexpectedBlockName(line.clone()));
                         }
                     }
                 }
                 ParseState::WithinBlock(block_type) => {
                     match (block_type, line.as_str()) {
                         // within block
-                        (BlockType::Host, "}") => {
-                            // TODO エラー処理
-                            let key = tmp_host.get("host_name").unwrap().clone();
-                            hosts.insert(key, tmp_host);
-                            tmp_host = HashMap::new();
-                            current_state = ParseState::Outside;
-                        }
+                        (BlockType::Host, "}") => match tmp_host.get("host_name") {
+                            Some(key) => {
+                                let key = key.clone();
+                                hosts.insert(key, tmp_host);
+                                tmp_host = HashMap::new();
+                                current_state = ParseState::Outside;
+                            }
+                            None => {
+                                return Err(ParseError::HostNameDoesNotExist);
+                            }
+                        },
                         (BlockType::Service, "}") => {
                             let key = tmp_service.get("host_name").unwrap().clone();
                             let v = services.get_mut(&key);
@@ -108,12 +110,8 @@ impl NagiosStatus {
                         (_, "}") => {
                             current_state = ParseState::Outside;
                         }
-                        (block_type, s) => {
-                            let (key, value) = s
-                                .split_once('=')
-                                // TODO ちゃんとエラー返す
-                                .expect(format!("failed to parse line: line={}", s).as_str());
-                            match block_type {
+                        (block_type, s) => match s.split_once('=') {
+                            Some((key, value)) => match block_type {
                                 BlockType::Info => {
                                     info.insert(key.to_string(), value.to_string());
                                 }
@@ -126,19 +124,60 @@ impl NagiosStatus {
                                 BlockType::Service => {
                                     tmp_service.insert(key.to_string(), value.to_string());
                                 }
+                            },
+                            None => {
+                                return Err(ParseError::InvalidKeyValue(s.to_string()));
                             }
-                        }
+                        },
                     }
                 }
             }
         }
 
-        NagiosStatus {
+        Ok(NagiosStatus {
             info,
             program,
             hosts,
             services,
+        })
+    }
+}
+
+type Result<T> = std::result::Result<T, ParseError>;
+
+#[derive(Debug)]
+pub enum ParseError {
+    IoError(io::Error),
+    UnexpectedBlockName(String),
+    HostNameDoesNotExist,
+    InvalidKeyValue(String),
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::IoError(err) => write!(f, "{}", err),
+            Self::UnexpectedBlockName(s) => write!(f, "unexpected block name: {}", s),
+            Self::HostNameDoesNotExist => write!(f, "host_name does not exist"),
+            Self::InvalidKeyValue(s) => write!(f, "invalid line: {}", s),
         }
+    }
+}
+
+impl error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Self::IoError(err) => Some(err),
+            Self::UnexpectedBlockName(_) => None,
+            Self::HostNameDoesNotExist => None,
+            Self::InvalidKeyValue(_) => None,
+        }
+    }
+}
+
+impl From<io::Error> for ParseError {
+    fn from(err: io::Error) -> ParseError {
+        ParseError::IoError(err)
     }
 }
 
@@ -183,7 +222,7 @@ mod tests {
         "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let nagios_status = NagiosStatus::parse(buf);
+        let nagios_status = NagiosStatus::parse(buf).unwrap();
 
         // info
         let expected = HashMap::from([
@@ -235,5 +274,63 @@ mod tests {
             ],
         )]);
         assert_eq!(nagios_status.services, expected);
+    }
+
+    #[test]
+    fn parse_error_unexpected_block_name() {
+        let status_dat = r#"
+            piyo {
+                created=123456789
+                version=9.99
+            }
+        "#;
+
+        let buf = io::BufReader::new(status_dat.as_bytes());
+        let result = NagiosStatus::parse(buf);
+
+        match result {
+            Err(ParseError::UnexpectedBlockName(s)) => {
+                assert_eq!(s, "piyo {".to_string())
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn parse_error_host_name_does_not_exist() {
+        let status_dat = r#"
+            host {
+                hoge=fuga
+            }
+        "#;
+
+        let buf = io::BufReader::new(status_dat.as_bytes());
+        let result = NagiosStatus::parse(buf);
+
+        match result {
+            Err(ParseError::HostNameDoesNotExist) => {
+                assert!(true)
+            }
+            _ => assert!(false),
+        }
+    }
+
+    #[test]
+    fn parse_error_invalid_key_value() {
+        let status_dat = r#"
+            host {
+                piyo
+            }
+        "#;
+
+        let buf = io::BufReader::new(status_dat.as_bytes());
+        let result = NagiosStatus::parse(buf);
+
+        match result {
+            Err(ParseError::InvalidKeyValue(s)) => {
+                assert_eq!(s, "piyo".to_string())
+            }
+            _ => assert!(false),
+        }
     }
 }
