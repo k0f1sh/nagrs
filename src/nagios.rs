@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Read};
 use std::path::Path;
-use std::process::Output;
 
 type NagiosInfo = HashMap<String, String>;
 type NagiosProgram = HashMap<String, String>;
@@ -70,64 +69,64 @@ impl NagiosStatus {
         let mut current_state: ParseState = ParseState::Outside;
 
         for line in lines {
-            match (&current_state, line.as_str()) {
-                // start block
-                (ParseState::Outside, "info {") => {
-                    current_state = ParseState::WithinBlock(BlockType::Info)
-                }
-                (ParseState::Outside, "program {") => {
-                    current_state = ParseState::WithinBlock(BlockType::Program)
-                }
-                (ParseState::Outside, "host {") => {
-                    current_state = ParseState::WithinBlock(BlockType::Host)
-                }
-                (ParseState::Outside, "service {") => {
-                    current_state = ParseState::WithinBlock(BlockType::Service)
-                }
-                (ParseState::Outside, _) => {
-                    // TODO return Error
-                    panic!()
-                }
-                // within block
-                (ParseState::WithinBlock(BlockType::Host), "}") => {
-                    // TODO エラー処理
-                    let key = tmp_host.get("host_name").unwrap().clone();
-                    hosts.insert(key, tmp_host);
-                    tmp_host = HashMap::new();
-                    current_state = ParseState::Outside;
-                }
-                (ParseState::WithinBlock(BlockType::Service), "}") => {
-                    let key = tmp_service.get("host_name").unwrap().clone();
-                    let v = services.get_mut(&key);
-                    match v {
-                        None => {
-                            services.insert(key, vec![tmp_service]);
+            match &current_state {
+                ParseState::Outside => {
+                    match line.as_str() {
+                        // start block
+                        "info {" => current_state = ParseState::WithinBlock(BlockType::Info),
+                        "program {" => current_state = ParseState::WithinBlock(BlockType::Program),
+                        "host {" => current_state = ParseState::WithinBlock(BlockType::Host),
+                        "service {" => current_state = ParseState::WithinBlock(BlockType::Service),
+                        _ => {
+                            // TODO return Error
+                            panic!()
                         }
-                        Some(v) => v.push(tmp_service),
                     }
-                    tmp_service = HashMap::new();
-                    current_state = ParseState::Outside;
                 }
-                (ParseState::WithinBlock(_), "}") => {
-                    current_state = ParseState::Outside;
-                }
-                (ParseState::WithinBlock(block_type), s) => {
-                    let (key, value) = s
-                        .split_once('=')
-                        // TODO ちゃんとエラー返す
-                        .expect(format!("failed to parse line: line={}", s).as_str());
-                    match block_type {
-                        BlockType::Info => {
-                            info.insert(key.to_string(), value.to_string());
+                ParseState::WithinBlock(block_type) => {
+                    match (block_type, line.as_str()) {
+                        // within block
+                        (BlockType::Host, "}") => {
+                            // TODO エラー処理
+                            let key = tmp_host.get("host_name").unwrap().clone();
+                            hosts.insert(key, tmp_host);
+                            tmp_host = HashMap::new();
+                            current_state = ParseState::Outside;
                         }
-                        BlockType::Program => {
-                            program.insert(key.to_string(), value.to_string());
+                        (BlockType::Service, "}") => {
+                            let key = tmp_service.get("host_name").unwrap().clone();
+                            let v = services.get_mut(&key);
+                            match v {
+                                None => {
+                                    services.insert(key, vec![tmp_service]);
+                                }
+                                Some(v) => v.push(tmp_service),
+                            }
+                            tmp_service = HashMap::new();
+                            current_state = ParseState::Outside;
                         }
-                        BlockType::Host => {
-                            tmp_host.insert(key.to_string(), value.to_string());
+                        (_, "}") => {
+                            current_state = ParseState::Outside;
                         }
-                        BlockType::Service => {
-                            tmp_service.insert(key.to_string(), value.to_string());
+                        (block_type, s) => {
+                            let (key, value) = s
+                                .split_once('=')
+                                // TODO ちゃんとエラー返す
+                                .expect(format!("failed to parse line: line={}", s).as_str());
+                            match block_type {
+                                BlockType::Info => {
+                                    info.insert(key.to_string(), value.to_string());
+                                }
+                                BlockType::Program => {
+                                    program.insert(key.to_string(), value.to_string());
+                                }
+                                BlockType::Host => {
+                                    tmp_host.insert(key.to_string(), value.to_string());
+                                }
+                                BlockType::Service => {
+                                    tmp_service.insert(key.to_string(), value.to_string());
+                                }
+                            }
                         }
                     }
                 }
@@ -165,6 +164,12 @@ mod tests {
                 state_type=1
             }
 
+            host {
+                host_name=web02
+                state_type=1
+                hoge=
+            }
+
             service {
                 host_name=web01
                 service_description=PING
@@ -173,6 +178,7 @@ mod tests {
             service {
                 host_name=web01
                 service_description=PONG
+                a=b=c
             }
         "#;
 
@@ -194,13 +200,23 @@ mod tests {
         assert_eq!(nagios_status.program, expected);
 
         // hosts
-        let expected = HashMap::from([(
-            "web01".to_string(),
-            HashMap::from([
-                ("host_name".to_string(), "web01".to_string()),
-                ("state_type".to_string(), "1".to_string()),
-            ]),
-        )]);
+        let expected = HashMap::from([
+            (
+                "web01".to_string(),
+                HashMap::from([
+                    ("host_name".to_string(), "web01".to_string()),
+                    ("state_type".to_string(), "1".to_string()),
+                ]),
+            ),
+            (
+                "web02".to_string(),
+                HashMap::from([
+                    ("host_name".to_string(), "web02".to_string()),
+                    ("state_type".to_string(), "1".to_string()),
+                    ("hoge".to_string(), "".to_string()),
+                ]),
+            ),
+        ]);
         assert_eq!(nagios_status.hosts, expected);
 
         // services
@@ -214,6 +230,7 @@ mod tests {
                 HashMap::from([
                     ("host_name".to_string(), "web01".to_string()),
                     ("service_description".to_string(), "PONG".to_string()),
+                    ("a".to_string(), "b=c".to_string()),
                 ]),
             ],
         )]);
