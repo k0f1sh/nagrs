@@ -28,9 +28,8 @@ pub fn write_cmd<P: AsRef<Path>>(
     let file = std::fs::OpenOptions::new().append(true).open(path)?;
     let mut writer = BufWriter::new(file);
 
-    for cmd in cmds {
-        write_cmd_line(cmd, timestamp, &mut writer)?;
-    }
+    cmds.iter()
+        .try_for_each(|cmd| write_cmd_line(cmd, timestamp, &mut writer))?;
 
     Ok(())
 }
