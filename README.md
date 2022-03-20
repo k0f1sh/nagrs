@@ -1,4 +1,4 @@
-# A library for managing Nagios configuration.
+# [WIP] A library for managing Nagios configuration.
 
 # TODO
     - execute command via nagios.cmd
