@@ -12,12 +12,15 @@ type NagiosHostName = String;
 
 type NagiosService = HashMap<String, String>;
 
+type NagiosContact = HashMap<String, String>;
+
 #[derive(Debug)]
 pub struct NagiosStatus {
     pub info: NagiosInfo,
     pub program: NagiosProgram,
     pub hosts: HashMap<NagiosHostName, NagiosHost>,
     pub services: HashMap<NagiosHostName, Vec<NagiosService>>,
+    pub contacts: Vec<NagiosContact>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -26,6 +29,7 @@ enum BlockType {
     Program,
     Host,
     Service,
+    Contact,
 }
 
 #[derive(Debug, PartialEq)]
@@ -61,9 +65,11 @@ impl NagiosStatus {
         let mut program: NagiosProgram = HashMap::new();
         let mut hosts: HashMap<NagiosHostName, NagiosHost> = HashMap::new();
         let mut services: HashMap<NagiosHostName, Vec<NagiosService>> = HashMap::new();
+        let mut contacts: Vec<NagiosContact> = vec![];
 
         let mut tmp_host: NagiosHost = HashMap::new();
         let mut tmp_service: NagiosService = HashMap::new();
+        let mut tmp_contact: NagiosContact = HashMap::new();
 
         let mut current_state: ParseState = ParseState::Outside;
 
@@ -79,6 +85,9 @@ impl NagiosStatus {
                         "hoststatus {" => current_state = ParseState::WithinBlock(BlockType::Host),
                         "servicestatus {" => {
                             current_state = ParseState::WithinBlock(BlockType::Service)
+                        }
+                        "contactstatus {" => {
+                            current_state = ParseState::WithinBlock(BlockType::Contact)
                         }
                         _ => {
                             return Err(ParseError::UnexpectedBlockName(line.clone()));
@@ -111,6 +120,11 @@ impl NagiosStatus {
                             tmp_service = HashMap::new();
                             current_state = ParseState::Outside;
                         }
+                        (BlockType::Contact, "}") => {
+                            contacts.push(tmp_contact);
+                            tmp_contact = HashMap::new();
+                            current_state = ParseState::Outside;
+                        }
                         (_, "}") => {
                             current_state = ParseState::Outside;
                         }
@@ -128,6 +142,9 @@ impl NagiosStatus {
                                 BlockType::Service => {
                                     tmp_service.insert(key.to_string(), value.to_string());
                                 }
+                                BlockType::Contact => {
+                                    tmp_contact.insert(key.to_string(), value.to_string());
+                                }
                             },
                             None => {
                                 return Err(ParseError::InvalidKeyValue(s.to_string()));
@@ -143,6 +160,7 @@ impl NagiosStatus {
             program,
             hosts,
             services,
+            contacts,
         })
     }
 }
@@ -223,7 +241,13 @@ mod tests {
                 service_description=PONG
                 a=b=c
             }
-        "#;
+
+            contactstatus {
+                contact_name=nagiosadmin
+                modified_attributes=0
+                }
+            
+            "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
         let nagios_status = NagiosStatus::parse(buf).unwrap();
@@ -278,6 +302,13 @@ mod tests {
             ],
         )]);
         assert_eq!(nagios_status.services, expected);
+
+        // contacts
+        let expected = vec![HashMap::from([
+            ("contact_name".to_string(), "nagiosadmin".to_string()),
+            ("modified_attributes".to_string(), "0".to_string()),
+        ])];
+        assert_eq!(nagios_status.contacts, expected);
     }
 
     #[test]
