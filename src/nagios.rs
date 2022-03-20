@@ -73,9 +73,13 @@ impl NagiosStatus {
                     match line.as_str() {
                         // start block
                         "info {" => current_state = ParseState::WithinBlock(BlockType::Info),
-                        "program {" => current_state = ParseState::WithinBlock(BlockType::Program),
-                        "host {" => current_state = ParseState::WithinBlock(BlockType::Host),
-                        "service {" => current_state = ParseState::WithinBlock(BlockType::Service),
+                        "programstatus {" => {
+                            current_state = ParseState::WithinBlock(BlockType::Program)
+                        }
+                        "hoststatus {" => current_state = ParseState::WithinBlock(BlockType::Host),
+                        "servicestatus {" => {
+                            current_state = ParseState::WithinBlock(BlockType::Service)
+                        }
                         _ => {
                             return Err(ParseError::UnexpectedBlockName(line.clone()));
                         }
@@ -193,28 +197,28 @@ mod tests {
                 version=9.99
             }
 
-            program {
+            programstatus {
                 daemon_mode=1
                 nagios_pid=99999
             }
 
-            host {
+            hoststatus {
                 host_name=web01
                 state_type=1
             }
 
-            host {
+            hoststatus {
                 host_name=web02
                 state_type=1
                 hoge=
             }
 
-            service {
+            servicestatus {
                 host_name=web01
                 service_description=PING
             }
 
-            service {
+            servicestatus {
                 host_name=web01
                 service_description=PONG
                 a=b=c
@@ -299,7 +303,7 @@ mod tests {
     #[test]
     fn parse_error_host_name_does_not_exist() {
         let status_dat = r#"
-            host {
+            hoststatus {
                 hoge=fuga
             }
         "#;
@@ -318,7 +322,7 @@ mod tests {
     #[test]
     fn parse_error_invalid_key_value() {
         let status_dat = r#"
-            host {
+            hoststatus {
                 piyo
             }
         "#;
