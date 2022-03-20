@@ -1,7 +1,7 @@
 use nagrs::nagios::NagiosStatus;
 
 fn main() {
-    let path = "test-status.dat";
+    let path = "testdata/status.dat";
     let status = NagiosStatus::parse_file(path);
     match status {
         Ok(status) => {
