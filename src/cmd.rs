@@ -1,5 +1,6 @@
 use std::io::BufWriter;
 use std::io::Write;
+use std::path::Path;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -8,14 +9,29 @@ pub trait NagiosCmd {
     fn to_cmd_string(&self) -> String;
 }
 
-pub fn write_cmd<W: Write>(
+pub fn write_cmd_line<W: Write>(
     cmd: &Box<dyn NagiosCmd>,
-    datetime: &DateTime<Utc>,
+    timestamp: i64,
     writer: &mut BufWriter<W>,
 ) -> std::io::Result<()> {
     let cmd_str = cmd.to_cmd_string();
-    let timestamp = datetime.timestamp();
     writer.write(format!("[{}] {}\n", timestamp, cmd_str).as_bytes())?;
+    Ok(())
+}
+
+pub fn write_cmd<P: AsRef<Path>>(
+    path: P,
+    cmds: &Vec<Box<dyn NagiosCmd>>,
+    datetime: &DateTime<Utc>,
+) -> std::io::Result<()> {
+    let timestamp = datetime.timestamp();
+    let file = std::fs::OpenOptions::new().append(true).open(path)?;
+    let mut writer = BufWriter::new(file);
+
+    for cmd in cmds {
+        write_cmd_line(cmd, timestamp, &mut writer)?;
+    }
+
     Ok(())
 }
 
@@ -50,13 +66,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_write_cmd() {
+    fn test_write_cmd_line() {
         let cmd = EnableHostGroupHostChecks::new_box("localhost".to_string());
         let datetime = DateTime::parse_from_rfc3339("2022-03-21T01:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
         let mut buf = BufWriter::new(vec![]);
-        let result = write_cmd(&cmd, &datetime, &mut buf);
+        let result = write_cmd_line(&cmd, datetime.timestamp(), &mut buf);
 
         assert_eq!(result.is_ok(), true);
 
