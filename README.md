@@ -1,2 +1,2 @@
-A library for managing Nagios configuration.
+# A library for managing Nagios configuration.
 
