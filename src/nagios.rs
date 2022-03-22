@@ -44,10 +44,13 @@ impl NagiosStatus {
     pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<NagiosStatus> {
         let file = File::open(path)?;
         let buf = io::BufReader::new(file);
-        NagiosStatus::parse(buf)
+        NagiosStatus::parse(buf, vec![])
     }
 
-    fn parse<R: Read>(buf: io::BufReader<R>) -> Result<NagiosStatus> {
+    fn parse<R: Read>(
+        buf: io::BufReader<R>,
+        filter_key_value: Vec<(String, String)>,
+    ) -> Result<NagiosStatus> {
         let lines = buf
             .lines()
             .filter(|r| r.is_ok())
@@ -73,7 +76,9 @@ impl NagiosStatus {
                 ParseState::WithinBlock => match line.as_str() {
                     "}" => {
                         // end block
-                        status.blocks.push(tmp_block);
+                        if Self::is_keeping_host(&tmp_block, &filter_key_value) {
+                            status.blocks.push(tmp_block);
+                        }
                         tmp_block = Block::new();
                         current_state = ParseState::Outside;
                     }
@@ -92,6 +97,26 @@ impl NagiosStatus {
         }
 
         Ok(status)
+    }
+
+    fn is_keeping_host(block: &Block, filter_key_value: &Vec<(String, String)>) -> bool {
+        if filter_key_value.is_empty() {
+            return true;
+        }
+
+        match block.block_type {
+            BlockType::Host => {
+                for (key, value) in filter_key_value {
+                    if let Some(v) = block.key_values.get(key) {
+                        if value == v {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
     }
 
     fn select_block_type(line: &str) -> Result<BlockType> {
@@ -176,7 +201,7 @@ mod tests {
             "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let nagios_status = NagiosStatus::parse(buf).unwrap();
+        let nagios_status = NagiosStatus::parse(buf, vec![]).unwrap();
 
         // info
         let expected = HashMap::from([
@@ -234,7 +259,7 @@ mod tests {
         "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let result = NagiosStatus::parse(buf);
+        let result = NagiosStatus::parse(buf, vec![]);
 
         match result {
             Err(ParseError::UnexpectedLine(s)) => {
@@ -253,7 +278,7 @@ mod tests {
         "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let result = NagiosStatus::parse(buf);
+        let result = NagiosStatus::parse(buf, vec![]);
 
         match result {
             Err(ParseError::InvalidKeyValue(s)) => {
@@ -261,5 +286,39 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn parse_filter_key_value() {
+        let status_dat = r#"
+            hoststatus {
+                host_name=web01
+                state_type=1
+            }
+
+            hoststatus {
+                host_name=web02
+                state_type=1
+            }
+
+            hoststatus {
+                host_name=web03
+                state_type=1
+            }
+
+            "#;
+
+        let buf = io::BufReader::new(status_dat.as_bytes());
+        let filter_key_value = vec![("host_name".to_string(), "web02".to_string())];
+        let nagios_status = NagiosStatus::parse(buf, filter_key_value).unwrap();
+        assert_eq!(nagios_status.blocks.len(), 1);
+
+        let expected = HashMap::from([
+            ("host_name".to_string(), "web02".to_string()),
+            ("state_type".to_string(), "1".to_string()),
+        ]);
+        let block = nagios_status.blocks.get(0).unwrap();
+        assert_eq!(block.block_type, BlockType::Host);
+        assert_eq!(block.key_values, expected);
     }
 }
