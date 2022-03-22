@@ -51,15 +51,8 @@ impl NagiosStatus {
             .filter(|r| r.is_ok())
             .map(|r| r.unwrap())
             .map(|line| line.trim().to_owned())
-            .filter(|line| {
-                if line.len() == 0 {
-                    return false;
-                };
-                if line.chars().nth(0).unwrap() == '#' {
-                    return false;
-                };
-                true
-            });
+            .filter(|line| line.len() > 0)
+            .filter(|line| line.chars().nth(0).unwrap() != '#');
 
         let mut info: NagiosInfo = HashMap::new();
         let mut program: NagiosProgram = HashMap::new();
