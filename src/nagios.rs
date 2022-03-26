@@ -1,3 +1,4 @@
+use std::collections::btree_map::Keys;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Read};
@@ -103,11 +104,15 @@ impl Block {
 pub type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug)]
+pub struct ConvertHostError;
+
+#[derive(Debug)]
 pub enum ParseError {
     IoError(io::Error),
     UnexpectedLine(String),
     InvalidKeyValue(String),
     HostNameKeyNotExists,
+    ConvertError(ConvertHostError),
 }
 
 impl fmt::Display for ParseError {
@@ -117,6 +122,7 @@ impl fmt::Display for ParseError {
             Self::UnexpectedLine(s) => write!(f, "unexpected line: {}", s),
             Self::InvalidKeyValue(s) => write!(f, "invalid line: {}", s),
             Self::HostNameKeyNotExists => write!(f, "host name key is not exists"),
+            Self::ConvertError(_) => write!(f, "failed to convert"),
         }
     }
 }
@@ -128,6 +134,7 @@ impl error::Error for ParseError {
             Self::UnexpectedLine(_) => None,
             Self::InvalidKeyValue(_) => None,
             Self::HostNameKeyNotExists => None,
+            Self::ConvertError(err) => Some(err),
         }
     }
 }
@@ -138,18 +145,78 @@ impl From<io::Error> for ParseError {
     }
 }
 
+impl From<ConvertHostError> for ParseError {
+    fn from(err: ConvertHostError) -> ParseError {
+        ParseError::ConvertError(err)
+    }
+}
+
+impl fmt::Display for ConvertHostError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "failed to convert to host")
+    }
+}
+
+impl error::Error for ConvertHostError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
 ////////////////////////////////////
 // nagios status
 
 const HOST_NAME_KEY: &str = "host_name";
+const NOTIFICATIONS_ENABLED_KEY: &str = "notifications_enabled";
+const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
 
 type HostName = String;
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Host {
+    host_name: HostName,
+    notifications_enabled: bool,
+    active_checks_enabled: bool,
+}
+
+impl Host {
+    fn from_key_values(
+        key_values: HashMap<String, String>,
+    ) -> std::result::Result<Host, ConvertHostError> {
+        let host_name = key_values.get(HOST_NAME_KEY).ok_or(ConvertHostError)?;
+        let notifications_enabled = match key_values
+            .get(NOTIFICATIONS_ENABLED_KEY)
+            .ok_or(ConvertHostError)?
+            .as_str()
+        {
+            "0" => Ok(false),
+            "1" => Ok(true),
+            _ => Err(ConvertHostError),
+        }?;
+
+        let active_checks_enabled = match key_values
+            .get(ACTIVE_CHECKS_ENABLED_KEY)
+            .ok_or(ConvertHostError)?
+            .as_str()
+        {
+            "0" => Ok(false),
+            "1" => Ok(true),
+            _ => Err(ConvertHostError),
+        }?;
+
+        Ok(Host {
+            host_name: host_name.to_owned(),
+            notifications_enabled,
+            active_checks_enabled,
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct NagiosStatus {
     info: HashMap<String, String>,
     program: HashMap<String, String>,
-    hosts: HashMap<HostName, HashMap<String, String>>,
+    hosts: HashMap<HostName, Host>,
     services: HashMap<HostName, Vec<HashMap<String, String>>>,
     contacts: Vec<HashMap<String, String>>,
 }
@@ -180,13 +247,8 @@ impl NagiosStatus {
                     status.program = block.key_values;
                 }
                 BlockType::Host => {
-                    let host_name = block.key_values.get(HOST_NAME_KEY);
-                    match host_name {
-                        Some(host_name) => {
-                            status.hosts.insert(host_name.to_string(), block.key_values);
-                        }
-                        None => return Err(ParseError::HostNameKeyNotExists),
-                    }
+                    let host = Host::from_key_values(block.key_values)?;
+                    status.hosts.insert(host.host_name.to_owned(), host);
                 }
                 BlockType::Service => {
                     let host_name = block.key_values.get(HOST_NAME_KEY);
@@ -221,7 +283,7 @@ impl NagiosStatus {
         &self.program
     }
 
-    pub fn get_host(&self, host_name: &str) -> Option<&HashMap<String, String>> {
+    pub fn get_host(&self, host_name: &str) -> Option<&Host> {
         self.hosts.get(host_name)
     }
 
@@ -247,7 +309,8 @@ mod tests {
 
     hoststatus {
         host_name=web01
-        state_type=1
+        notifications_enabled=1
+        active_checks_enabled=1
     }
 
     servicestatus {
@@ -288,7 +351,8 @@ mod tests {
         // host
         let expected = HashMap::from([
             ("host_name".to_string(), "web01".to_string()),
-            ("state_type".to_string(), "1".to_string()),
+            ("notifications_enabled".to_string(), "1".to_string()),
+            ("active_checks_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(2).unwrap();
         assert_eq!(block.block_type, BlockType::Host);
@@ -378,10 +442,11 @@ mod tests {
             status.hosts,
             HashMap::from([(
                 "web01".to_string(),
-                HashMap::from([
-                    ("host_name".to_string(), "web01".to_string()),
-                    ("state_type".to_string(), "1".to_string()),
-                ]),
+                Host {
+                    host_name: "web01".to_string(),
+                    notifications_enabled: true,
+                    active_checks_enabled: true,
+                }
             )])
         );
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error, fmt, path::Path};
 
-use nagios::NagiosStatus;
+use nagios::{Host, NagiosStatus};
 
 mod cmd;
 pub mod nagios;
@@ -42,10 +42,7 @@ impl<P: AsRef<Path>> Nagrs<P> {
         Ok(())
     }
 
-    pub fn find_host(
-        &self,
-        host_name: &str,
-    ) -> Result<Option<HashMap<String, String>>, StatusNotLoadedError> {
+    pub fn find_host(&self, host_name: &str) -> Result<Option<Host>, StatusNotLoadedError> {
         if self.status.is_none() {
             return Err(StatusNotLoadedError);
         }
