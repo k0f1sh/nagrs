@@ -1,4 +1,4 @@
-use nagrs::{nagios::NagiosStatus, Nagrs};
+use nagrs::Nagrs;
 
 fn main() {
     let mut nagrs = Nagrs::new("", "testdata/status.dat");
