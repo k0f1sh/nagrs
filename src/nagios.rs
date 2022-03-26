@@ -177,6 +177,7 @@ pub struct Host {
     host_name: HostName,
     notifications_enabled: bool,
     active_checks_enabled: bool,
+    // TODO add fields as needed
 }
 
 impl Host {
