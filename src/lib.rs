@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error, fmt, path::Path};
 
-use nagios::{Host, NagiosStatus};
+use nagios::{Host, NagiosStatus, Service};
 
 mod cmd;
 pub mod nagios;
@@ -49,5 +49,19 @@ impl<P: AsRef<Path>> Nagrs<P> {
 
         let status = self.status.as_ref().unwrap();
         Ok(status.get_host(host_name).map(|h| h.clone()))
+    }
+
+    pub fn find_services(&self, host_name: &str) -> Result<Vec<Service>, StatusNotLoadedError> {
+        if self.status.is_none() {
+            return Err(StatusNotLoadedError);
+        }
+
+        let status = self.status.as_ref().unwrap();
+        Ok(status
+            .get_host_services(host_name)
+            .unwrap_or(&Vec::new())
+            .iter()
+            .map(|s| s.clone())
+            .collect())
     }
 }

@@ -15,4 +15,16 @@ fn main() {
             println!("{:#?}", error);
         }
     };
+
+    let services = nagrs.find_services("localhost");
+    match &services {
+        Ok(services) => {
+            println!("ok!");
+            println!("{:#?}", services);
+        }
+        Err(error) => {
+            println!("error!");
+            println!("{:#?}", error);
+        }
+    };
 }

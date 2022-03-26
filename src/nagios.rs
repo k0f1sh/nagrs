@@ -1,4 +1,3 @@
-use std::collections::btree_map::Keys;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, Read};
@@ -37,11 +36,11 @@ enum ParseState {
 }
 
 impl Block {
-    fn parse_file<P: AsRef<Path>>(path: P) -> Result<Vec<Block>> {
-        let file = File::open(path)?;
-        let buf = io::BufReader::new(file);
-        Block::parse(buf)
-    }
+    // fn parse_file<P: AsRef<Path>>(path: P) -> Result<Vec<Block>> {
+    //     let file = File::open(path)?;
+    //     let buf = io::BufReader::new(file);
+    //     Block::parse(buf)
+    // }
 
     fn parse<R: Read>(buf: io::BufReader<R>) -> Result<Vec<Block>> {
         let lines = buf
@@ -167,6 +166,7 @@ impl error::Error for ConvertHostError {
 // nagios status
 
 const HOST_NAME_KEY: &str = "host_name";
+const SERVICE_DESCRIPTION_KEY: &str = "service_description";
 const NOTIFICATIONS_ENABLED_KEY: &str = "notifications_enabled";
 const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
 
@@ -213,12 +213,58 @@ impl Host {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub struct Service {
+    host_name: HostName,
+    service_description: String,
+    notifications_enabled: bool,
+    active_checks_enabled: bool,
+    // TODO add fields as needed
+}
+
+impl Service {
+    fn from_key_values(
+        key_values: HashMap<String, String>,
+    ) -> std::result::Result<Service, ConvertHostError> {
+        let host_name = key_values.get(HOST_NAME_KEY).ok_or(ConvertHostError)?;
+        let service_description = key_values
+            .get(SERVICE_DESCRIPTION_KEY)
+            .ok_or(ConvertHostError)?;
+        let notifications_enabled = match key_values
+            .get(NOTIFICATIONS_ENABLED_KEY)
+            .ok_or(ConvertHostError)?
+            .as_str()
+        {
+            "0" => Ok(false),
+            "1" => Ok(true),
+            _ => Err(ConvertHostError),
+        }?;
+
+        let active_checks_enabled = match key_values
+            .get(ACTIVE_CHECKS_ENABLED_KEY)
+            .ok_or(ConvertHostError)?
+            .as_str()
+        {
+            "0" => Ok(false),
+            "1" => Ok(true),
+            _ => Err(ConvertHostError),
+        }?;
+
+        Ok(Service {
+            host_name: host_name.to_owned(),
+            service_description: service_description.to_owned(),
+            notifications_enabled,
+            active_checks_enabled,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct NagiosStatus {
     info: HashMap<String, String>,
     program: HashMap<String, String>,
     hosts: HashMap<HostName, Host>,
-    services: HashMap<HostName, Vec<HashMap<String, String>>>,
+    services: HashMap<HostName, Vec<Service>>,
     contacts: Vec<HashMap<String, String>>,
 }
 
@@ -252,20 +298,15 @@ impl NagiosStatus {
                     status.hosts.insert(host.host_name.to_owned(), host);
                 }
                 BlockType::Service => {
-                    let host_name = block.key_values.get(HOST_NAME_KEY);
-                    match host_name {
-                        Some(host_name) => {
-                            let host_services = status.services.get_mut(host_name);
-                            match host_services {
-                                Some(host_service) => host_service.push(block.key_values),
-                                None => {
-                                    status
-                                        .services
-                                        .insert(host_name.to_string(), vec![block.key_values]);
-                                }
-                            }
+                    let service = Service::from_key_values(block.key_values)?;
+                    let host_services = status.services.get_mut(&service.host_name);
+                    match host_services {
+                        Some(host_service) => host_service.push(service),
+                        None => {
+                            status
+                                .services
+                                .insert(service.host_name.to_string(), vec![service]);
                         }
-                        None => return Err(ParseError::HostNameKeyNotExists),
                     }
                 }
                 BlockType::Contact => status.contacts.push(block.key_values),
@@ -288,7 +329,7 @@ impl NagiosStatus {
         self.hosts.get(host_name)
     }
 
-    pub fn get_host_services(&self, host_name: &str) -> Option<&Vec<HashMap<String, String>>> {
+    pub fn get_host_services(&self, host_name: &str) -> Option<&Vec<Service>> {
         self.services.get(host_name)
     }
 }
@@ -317,6 +358,8 @@ mod tests {
     servicestatus {
         host_name=web01
         service_description=PING
+        notifications_enabled=1
+        active_checks_enabled=1
     }
 
     contactstatus {
@@ -363,6 +406,8 @@ mod tests {
         let expected = HashMap::from([
             ("host_name".to_string(), "web01".to_string()),
             ("service_description".to_string(), "PING".to_string()),
+            ("notifications_enabled".to_string(), "1".to_string()),
+            ("active_checks_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(3).unwrap();
         assert_eq!(block.block_type, BlockType::Service);
@@ -455,21 +500,12 @@ mod tests {
             status.services,
             HashMap::from([(
                 "web01".to_string(),
-                vec![HashMap::from([
-                    ("host_name".to_string(), "web01".to_string()),
-                    ("service_description".to_string(), "PING".to_string()),
-                ]),],
-            )])
-        );
-
-        assert_eq!(
-            status.services,
-            HashMap::from([(
-                "web01".to_string(),
-                vec![HashMap::from([
-                    ("host_name".to_string(), "web01".to_string()),
-                    ("service_description".to_string(), "PING".to_string()),
-                ]),],
+                vec![Service {
+                    host_name: "web01".to_string(),
+                    service_description: "PING".to_string(),
+                    notifications_enabled: true,
+                    active_checks_enabled: true,
+                }],
             )])
         );
 
