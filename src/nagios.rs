@@ -212,6 +212,22 @@ impl NagiosStatus {
 
         Ok(status)
     }
+
+    pub fn get_info(&self) -> &HashMap<String, String> {
+        &self.info
+    }
+
+    pub fn get_program(&self) -> &HashMap<String, String> {
+        &self.program
+    }
+
+    pub fn get_host(&self, host_name: &str) -> Option<&HashMap<String, String>> {
+        self.hosts.get(host_name)
+    }
+
+    pub fn get_host_services(&self, host_name: &str) -> Option<&Vec<HashMap<String, String>>> {
+        self.services.get(host_name)
+    }
 }
 
 #[cfg(test)]
