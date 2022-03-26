@@ -218,37 +218,37 @@ impl NagiosStatus {
 mod tests {
     use super::*;
 
+    const STATUS_DAT: &str = r#"
+    info {
+        created=123456789
+        version=9.99
+    }
+
+    programstatus {
+        daemon_mode=1
+        nagios_pid=99999
+    }
+
+    hoststatus {
+        host_name=web01
+        state_type=1
+    }
+
+    servicestatus {
+        host_name=web01
+        service_description=PING
+    }
+
+    contactstatus {
+        contact_name=nagiosadmin
+        modified_attributes=0
+        }
+    
+    "#;
+
     #[test]
     fn parse() {
-        let status_dat = r#"
-            info {
-                created=123456789
-                version=9.99
-            }
-
-            programstatus {
-                daemon_mode=1
-                nagios_pid=99999
-            }
-
-            hoststatus {
-                host_name=web01
-                state_type=1
-            }
-
-            servicestatus {
-                host_name=web01
-                service_description=PING
-            }
-
-            contactstatus {
-                contact_name=nagiosadmin
-                modified_attributes=0
-                }
-            
-            "#;
-
-        let buf = io::BufReader::new(status_dat.as_bytes());
+        let buf = io::BufReader::new(STATUS_DAT.as_bytes());
         let blocks = Block::parse(buf).unwrap();
 
         // info
@@ -299,14 +299,14 @@ mod tests {
 
     #[test]
     fn parse_error_unexpected_block_name() {
-        let status_dat = r#"
+        let unexpected_status_dat = r#"
             piyo {
                 created=123456789
                 version=9.99
             }
         "#;
 
-        let buf = io::BufReader::new(status_dat.as_bytes());
+        let buf = io::BufReader::new(unexpected_status_dat.as_bytes());
         let result = Block::parse(buf);
 
         match result {
@@ -319,13 +319,13 @@ mod tests {
 
     #[test]
     fn parse_error_invalid_key_value() {
-        let status_dat = r#"
+        let invalid_status_dat = r#"
             hoststatus {
                 piyo
             }
         "#;
 
-        let buf = io::BufReader::new(status_dat.as_bytes());
+        let buf = io::BufReader::new(invalid_status_dat.as_bytes());
         let result = Block::parse(buf);
 
         match result {
@@ -334,5 +334,69 @@ mod tests {
             }
             _ => assert!(false),
         }
+    }
+
+    #[test]
+    fn nagios_status() {
+        let buf = io::BufReader::new(STATUS_DAT.as_bytes());
+        let blocks = Block::parse(buf).unwrap();
+        let status = NagiosStatus::from_blocks(blocks).unwrap();
+
+        assert_eq!(
+            status.info,
+            HashMap::from([
+                ("created".to_string(), "123456789".to_string()),
+                ("version".to_string(), "9.99".to_string()),
+            ])
+        );
+
+        assert_eq!(
+            status.program,
+            HashMap::from([
+                ("daemon_mode".to_string(), "1".to_string()),
+                ("nagios_pid".to_string(), "99999".to_string()),
+            ])
+        );
+
+        assert_eq!(
+            status.hosts,
+            HashMap::from([(
+                "web01".to_string(),
+                HashMap::from([
+                    ("host_name".to_string(), "web01".to_string()),
+                    ("state_type".to_string(), "1".to_string()),
+                ]),
+            )])
+        );
+
+        assert_eq!(
+            status.services,
+            HashMap::from([(
+                "web01".to_string(),
+                vec![HashMap::from([
+                    ("host_name".to_string(), "web01".to_string()),
+                    ("service_description".to_string(), "PING".to_string()),
+                ]),],
+            )])
+        );
+
+        assert_eq!(
+            status.services,
+            HashMap::from([(
+                "web01".to_string(),
+                vec![HashMap::from([
+                    ("host_name".to_string(), "web01".to_string()),
+                    ("service_description".to_string(), "PING".to_string()),
+                ]),],
+            )])
+        );
+
+        assert_eq!(
+            status.contacts,
+            vec![HashMap::from([
+                ("contact_name".to_string(), "nagiosadmin".to_string()),
+                ("modified_attributes".to_string(), "0".to_string()),
+            ])]
+        )
     }
 }
