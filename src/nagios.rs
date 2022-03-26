@@ -29,25 +29,20 @@ impl Block {
     }
 }
 
-#[derive(Debug)]
-pub struct NagiosStatus {
-    blocks: Vec<Block>,
-}
-
 #[derive(Debug, PartialEq)]
 enum ParseState {
     WithinBlock,
     Outside,
 }
 
-impl NagiosStatus {
-    pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<NagiosStatus> {
+impl Block {
+    fn parse_file<P: AsRef<Path>>(path: P) -> Result<Vec<Block>> {
         let file = File::open(path)?;
         let buf = io::BufReader::new(file);
-        NagiosStatus::parse(buf)
+        Block::parse(buf)
     }
 
-    fn parse<R: Read>(buf: io::BufReader<R>) -> Result<NagiosStatus> {
+    fn parse<R: Read>(buf: io::BufReader<R>) -> Result<Vec<Block>> {
         let lines = buf
             .lines()
             .filter(|r| r.is_ok())
@@ -56,7 +51,7 @@ impl NagiosStatus {
             .filter(|line| line.len() > 0)
             .filter(|line| line.chars().nth(0).unwrap() != '#');
 
-        let mut status = NagiosStatus { blocks: Vec::new() };
+        let mut blocks: Vec<Block> = vec![];
         let mut tmp_block = Block::new();
 
         let mut current_state: ParseState = ParseState::Outside;
@@ -72,7 +67,7 @@ impl NagiosStatus {
                 },
                 ParseState::WithinBlock => match line.as_str() {
                     "}" => {
-                        status.blocks.push(tmp_block);
+                        blocks.push(tmp_block);
                         tmp_block = Block::new();
                         current_state = ParseState::Outside;
                     }
@@ -90,7 +85,7 @@ impl NagiosStatus {
             }
         }
 
-        Ok(status)
+        Ok(blocks)
     }
 
     fn select_block_type(line: &str) -> Result<BlockType> {
@@ -112,6 +107,7 @@ pub enum ParseError {
     IoError(io::Error),
     UnexpectedLine(String),
     InvalidKeyValue(String),
+    HostNameKeyNotExists,
 }
 
 impl fmt::Display for ParseError {
@@ -120,6 +116,7 @@ impl fmt::Display for ParseError {
             Self::IoError(err) => write!(f, "{}", err),
             Self::UnexpectedLine(s) => write!(f, "unexpected line: {}", s),
             Self::InvalidKeyValue(s) => write!(f, "invalid line: {}", s),
+            Self::HostNameKeyNotExists => write!(f, "host name key is not exists"),
         }
     }
 }
@@ -130,6 +127,7 @@ impl error::Error for ParseError {
             Self::IoError(err) => Some(err),
             Self::UnexpectedLine(_) => None,
             Self::InvalidKeyValue(_) => None,
+            Self::HostNameKeyNotExists => None,
         }
     }
 }
@@ -137,6 +135,82 @@ impl error::Error for ParseError {
 impl From<io::Error> for ParseError {
     fn from(err: io::Error) -> ParseError {
         ParseError::IoError(err)
+    }
+}
+
+////////////////////////////////////
+// nagios status
+
+const HOST_NAME_KEY: &str = "host_name";
+
+type HostName = String;
+
+#[derive(Debug)]
+pub struct NagiosStatus {
+    info: HashMap<String, String>,
+    program: HashMap<String, String>,
+    hosts: HashMap<HostName, HashMap<String, String>>,
+    services: HashMap<HostName, Vec<HashMap<String, String>>>,
+    contacts: Vec<HashMap<String, String>>,
+}
+
+impl NagiosStatus {
+    pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<NagiosStatus> {
+        let file = File::open(path)?;
+        let buf = io::BufReader::new(file);
+        let blocks = Block::parse(buf)?;
+        Self::from_blocks(blocks)
+    }
+
+    fn from_blocks(blocks: Vec<Block>) -> Result<NagiosStatus> {
+        let mut status = NagiosStatus {
+            info: HashMap::new(),
+            program: HashMap::new(),
+            hosts: HashMap::new(),
+            services: HashMap::new(),
+            contacts: Vec::new(),
+        };
+
+        for block in blocks {
+            match &block.block_type {
+                BlockType::Info => {
+                    status.info = block.key_values;
+                }
+                BlockType::Program => {
+                    status.program = block.key_values;
+                }
+                BlockType::Host => {
+                    let host_name = block.key_values.get(HOST_NAME_KEY);
+                    match host_name {
+                        Some(host_name) => {
+                            status.hosts.insert(host_name.to_string(), block.key_values);
+                        }
+                        None => return Err(ParseError::HostNameKeyNotExists),
+                    }
+                }
+                BlockType::Service => {
+                    let host_name = block.key_values.get(HOST_NAME_KEY);
+                    match host_name {
+                        Some(host_name) => {
+                            let host_services = status.services.get_mut(host_name);
+                            match host_services {
+                                Some(host_service) => host_service.push(block.key_values),
+                                None => {
+                                    status
+                                        .services
+                                        .insert(host_name.to_string(), vec![block.key_values]);
+                                }
+                            }
+                        }
+                        None => return Err(ParseError::HostNameKeyNotExists),
+                    }
+                }
+                BlockType::Contact => status.contacts.push(block.key_values),
+                _ => {}
+            }
+        }
+
+        Ok(status)
     }
 }
 
@@ -175,14 +249,14 @@ mod tests {
             "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let nagios_status = NagiosStatus::parse(buf).unwrap();
+        let blocks = Block::parse(buf).unwrap();
 
         // info
         let expected = HashMap::from([
             ("created".to_string(), "123456789".to_string()),
             ("version".to_string(), "9.99".to_string()),
         ]);
-        let block = nagios_status.blocks.get(0).unwrap();
+        let block = blocks.get(0).unwrap();
         assert_eq!(block.block_type, BlockType::Info);
         assert_eq!(block.key_values, expected);
 
@@ -191,7 +265,7 @@ mod tests {
             ("daemon_mode".to_string(), "1".to_string()),
             ("nagios_pid".to_string(), "99999".to_string()),
         ]);
-        let block = nagios_status.blocks.get(1).unwrap();
+        let block = blocks.get(1).unwrap();
         assert_eq!(block.block_type, BlockType::Program);
         assert_eq!(block.key_values, expected);
 
@@ -200,7 +274,7 @@ mod tests {
             ("host_name".to_string(), "web01".to_string()),
             ("state_type".to_string(), "1".to_string()),
         ]);
-        let block = nagios_status.blocks.get(2).unwrap();
+        let block = blocks.get(2).unwrap();
         assert_eq!(block.block_type, BlockType::Host);
         assert_eq!(block.key_values, expected);
 
@@ -209,7 +283,7 @@ mod tests {
             ("host_name".to_string(), "web01".to_string()),
             ("service_description".to_string(), "PING".to_string()),
         ]);
-        let block = nagios_status.blocks.get(3).unwrap();
+        let block = blocks.get(3).unwrap();
         assert_eq!(block.block_type, BlockType::Service);
         assert_eq!(block.key_values, expected);
 
@@ -218,7 +292,7 @@ mod tests {
             ("contact_name".to_string(), "nagiosadmin".to_string()),
             ("modified_attributes".to_string(), "0".to_string()),
         ]);
-        let block = nagios_status.blocks.get(4).unwrap();
+        let block = blocks.get(4).unwrap();
         assert_eq!(block.block_type, BlockType::Contact);
         assert_eq!(block.key_values, expected);
     }
@@ -233,7 +307,7 @@ mod tests {
         "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let result = NagiosStatus::parse(buf);
+        let result = Block::parse(buf);
 
         match result {
             Err(ParseError::UnexpectedLine(s)) => {
@@ -252,7 +326,7 @@ mod tests {
         "#;
 
         let buf = io::BufReader::new(status_dat.as_bytes());
-        let result = NagiosStatus::parse(buf);
+        let result = Block::parse(buf);
 
         match result {
             Err(ParseError::InvalidKeyValue(s)) => {
