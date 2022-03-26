@@ -100,7 +100,7 @@ impl Block {
     }
 }
 
-type Result<T> = std::result::Result<T, ParseError>;
+pub type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug)]
 pub enum ParseError {

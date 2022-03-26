@@ -1,16 +1,18 @@
-use nagrs::nagios::NagiosStatus;
+use nagrs::{nagios::NagiosStatus, Nagrs};
 
 fn main() {
-    let path = "testdata/status.dat";
-    let status = NagiosStatus::parse_file(path);
-    match status {
-        Ok(status) => {
-            println!("parse ok!");
-            println!("{:#?}", status);
+    let mut nagrs = Nagrs::new("", "testdata/status.dat");
+    nagrs.load().unwrap();
+
+    let host = nagrs.find_host("localhost");
+    match &host {
+        Ok(host) => {
+            println!("ok!");
+            println!("{:#?}", host);
         }
         Err(error) => {
-            println!("parse error!");
+            println!("error!");
             println!("{:#?}", error);
         }
-    }
+    };
 }
