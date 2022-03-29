@@ -1,4 +1,6 @@
-use std::{collections::HashMap, error, fmt, path::Path};
+use chrono::DateTime;
+use chrono::Utc;
+use std::path::Path;
 
 use nagios::{Host, NagiosStatus, Service};
 
@@ -10,52 +12,47 @@ pub struct Nagrs<P: AsRef<Path>> {
     command_file_path: P,
     status_file_path: P,
     status: Option<NagiosStatus>,
-}
-
-#[derive(Debug, Clone)]
-pub struct StatusNotLoadedError;
-
-impl fmt::Display for StatusNotLoadedError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "nagios status not loaded")
-    }
-}
-
-impl error::Error for StatusNotLoadedError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
+    last_loaded: DateTime<Utc>,
+    max_cache_sec: usize,
 }
 
 impl<P: AsRef<Path>> Nagrs<P> {
-    pub fn new(command_file_path: P, status_file_path: P) -> Nagrs<P> {
+    pub fn new(command_file_path: P, status_file_path: P, max_cache_sec: usize) -> Nagrs<P> {
         Nagrs {
             command_file_path,
             status_file_path,
             status: None,
+            last_loaded: Utc::now(),
+            max_cache_sec,
         }
     }
 
-    pub fn load(&mut self) -> nagios::Result<()> {
+    fn load(&mut self) -> nagios::Result<()> {
+        self.last_loaded = Utc::now();
         let status = NagiosStatus::parse_file(&self.status_file_path)?;
         self.status = Some(status);
         Ok(())
     }
 
-    pub fn find_host(&self, host_name: &str) -> Result<Option<Host>, StatusNotLoadedError> {
-        if self.status.is_none() {
-            return Err(StatusNotLoadedError);
+    fn load_smartly(&mut self) -> nagios::Result<()> {
+        let now = Utc::now();
+        let diff = now - self.last_loaded;
+
+        if self.status.is_none() || diff.num_seconds() >= self.max_cache_sec as i64 {
+            self.load()?
         }
 
+        Ok(())
+    }
+
+    pub fn find_host(&mut self, host_name: &str) -> nagios::Result<Option<Host>> {
+        self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_host(host_name).map(|h| h.clone()))
     }
 
-    pub fn find_services(&self, host_name: &str) -> Result<Vec<Service>, StatusNotLoadedError> {
-        if self.status.is_none() {
-            return Err(StatusNotLoadedError);
-        }
-
+    pub fn find_services(&mut self, host_name: &str) -> nagios::Result<Vec<Service>> {
+        self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status
             .get_host_services(host_name)

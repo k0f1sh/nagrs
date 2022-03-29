@@ -1,8 +1,7 @@
 use nagrs::Nagrs;
 
 fn main() {
-    let mut nagrs = Nagrs::new("", "testdata/status.dat");
-    nagrs.load().unwrap();
+    let mut nagrs = Nagrs::new("", "testdata/status.dat", 10);
 
     let host = nagrs.find_host("localhost");
     match &host {
