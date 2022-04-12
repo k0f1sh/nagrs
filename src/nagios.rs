@@ -4,6 +4,8 @@ use std::io::{self, BufRead, Read};
 use std::path::Path;
 use std::{error, fmt};
 
+use regex::Regex;
+
 #[derive(Debug, PartialEq)]
 enum BlockType {
     Info,
@@ -78,7 +80,7 @@ impl Block {
                                 .insert(key.to_string(), value.to_string());
                         }
                         None => {
-                            return Err(ParseError::InvalidKeyValue(s.to_string()));
+                            return Err(NagiosError::InvalidKeyValue(s.to_string()));
                         }
                     },
                 },
@@ -95,26 +97,30 @@ impl Block {
             "hoststatus {" => Ok(BlockType::Host),
             "servicestatus {" => Ok(BlockType::Service),
             "contactstatus {" => Ok(BlockType::Contact),
-            _ => Err(ParseError::UnexpectedLine(line.to_string())),
+            _ => Err(NagiosError::UnexpectedLine(line.to_string())),
         }
     }
 }
 
-pub type Result<T> = std::result::Result<T, ParseError>;
+pub type Result<T> = std::result::Result<T, NagiosError>;
 
 #[derive(Debug)]
 pub struct ConvertHostError;
 
 #[derive(Debug)]
-pub enum ParseError {
+pub struct InvalidRegexError;
+
+#[derive(Debug)]
+pub enum NagiosError {
     IoError(io::Error),
     UnexpectedLine(String),
     InvalidKeyValue(String),
     HostNameKeyNotExists,
     ConvertError(ConvertHostError),
+    InvalidRegexError,
 }
 
-impl fmt::Display for ParseError {
+impl fmt::Display for NagiosError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::IoError(err) => write!(f, "{}", err),
@@ -122,11 +128,12 @@ impl fmt::Display for ParseError {
             Self::InvalidKeyValue(s) => write!(f, "invalid line: {}", s),
             Self::HostNameKeyNotExists => write!(f, "host name key is not exists"),
             Self::ConvertError(_) => write!(f, "failed to convert"),
+            Self::InvalidRegexError => write!(f, "invalid regex"),
         }
     }
 }
 
-impl error::Error for ParseError {
+impl error::Error for NagiosError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             Self::IoError(err) => Some(err),
@@ -134,19 +141,26 @@ impl error::Error for ParseError {
             Self::InvalidKeyValue(_) => None,
             Self::HostNameKeyNotExists => None,
             Self::ConvertError(err) => Some(err),
+            Self::InvalidRegexError => None,
         }
     }
 }
 
-impl From<io::Error> for ParseError {
-    fn from(err: io::Error) -> ParseError {
-        ParseError::IoError(err)
+impl From<io::Error> for NagiosError {
+    fn from(err: io::Error) -> NagiosError {
+        NagiosError::IoError(err)
     }
 }
 
-impl From<ConvertHostError> for ParseError {
-    fn from(err: ConvertHostError) -> ParseError {
-        ParseError::ConvertError(err)
+impl From<ConvertHostError> for NagiosError {
+    fn from(err: ConvertHostError) -> NagiosError {
+        NagiosError::ConvertError(err)
+    }
+}
+
+impl From<InvalidRegexError> for NagiosError {
+    fn from(_: InvalidRegexError) -> NagiosError {
+        NagiosError::InvalidRegexError
     }
 }
 
@@ -157,6 +171,18 @@ impl fmt::Display for ConvertHostError {
 }
 
 impl error::Error for ConvertHostError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
+impl fmt::Display for InvalidRegexError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid regex")
+    }
+}
+
+impl error::Error for InvalidRegexError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
@@ -310,12 +336,22 @@ impl NagiosStatus {
         &self.program
     }
 
-    pub fn get_host(&self, host_name: &str) -> Option<&Host> {
-        self.hosts.get(host_name)
+    pub fn get_host(&self, host_name: &str) -> Option<Host> {
+        self.hosts.get(host_name).map(|host| host.clone())
     }
 
-    pub fn get_host_services(&self, host_name: &str) -> Option<&Vec<Service>> {
-        self.services.get(host_name)
+    pub fn get_host_services(&self, host_name: &str) -> Option<Vec<Service>> {
+        self.services
+            .get(host_name)
+            .map(|services| services.clone())
+    }
+
+    pub fn get_hosts_regex(&self, re: &Regex) -> Vec<Host> {
+        self.hosts
+            .iter()
+            .filter(|(host_name, _)| re.is_match(&host_name))
+            .map(|(_, host)| host.clone())
+            .collect()
     }
 }
 
@@ -425,7 +461,7 @@ mod tests {
         let result = Block::parse(buf);
 
         match result {
-            Err(ParseError::UnexpectedLine(s)) => {
+            Err(NagiosError::UnexpectedLine(s)) => {
                 assert_eq!(s, "piyo {".to_string())
             }
             _ => assert!(false),
@@ -444,7 +480,7 @@ mod tests {
         let result = Block::parse(buf);
 
         match result {
-            Err(ParseError::InvalidKeyValue(s)) => {
+            Err(NagiosError::InvalidKeyValue(s)) => {
                 assert_eq!(s, "piyo".to_string())
             }
             _ => assert!(false),

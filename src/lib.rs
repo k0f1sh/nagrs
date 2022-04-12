@@ -1,5 +1,8 @@
 use chrono::DateTime;
 use chrono::Utc;
+use nagios::InvalidRegexError;
+use nagios::NagiosError;
+use regex::Regex;
 use std::path::Path;
 
 use nagios::{Host, NagiosStatus, Service};
@@ -48,17 +51,20 @@ impl<P: AsRef<Path>> Nagrs<P> {
     pub fn find_host(&mut self, host_name: &str) -> nagios::Result<Option<Host>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
-        Ok(status.get_host(host_name).map(|h| h.clone()))
+        Ok(status.get_host(host_name))
+    }
+
+    pub fn find_hosts_regex(&mut self, regex_string: &str) -> nagios::Result<Vec<Host>> {
+        self.load_smartly()?;
+        let status = self.status.as_ref().unwrap();
+        // TODO validate regex_string
+        let re = Regex::new(regex_string).map_err(|_| InvalidRegexError)?;
+        Ok(status.get_hosts_regex(&re))
     }
 
     pub fn find_services(&mut self, host_name: &str) -> nagios::Result<Vec<Service>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
-        Ok(status
-            .get_host_services(host_name)
-            .unwrap_or(&Vec::new())
-            .iter()
-            .map(|s| s.clone())
-            .collect())
+        Ok(status.get_host_services(host_name).unwrap_or(Vec::new()))
     }
 }
