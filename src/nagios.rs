@@ -169,6 +169,7 @@ const HOST_NAME_KEY: &str = "host_name";
 const SERVICE_DESCRIPTION_KEY: &str = "service_description";
 const NOTIFICATIONS_ENABLED_KEY: &str = "notifications_enabled";
 const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
+const PASSIVE_CHECKS_ENABLED_KEY: &str = "passive_checks_enabled";
 
 type HostName = String;
 
@@ -177,7 +178,19 @@ pub struct Host {
     host_name: HostName,
     notifications_enabled: bool,
     active_checks_enabled: bool,
+    passive_checks_enabled: bool,
     // TODO add fields as needed
+}
+
+fn get_bool_value(
+    key: &str,
+    key_values: &HashMap<String, String>,
+) -> std::result::Result<bool, ConvertHostError> {
+    match key_values.get(key).ok_or(ConvertHostError)?.as_str() {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        _ => Err(ConvertHostError),
+    }
 }
 
 impl Host {
@@ -185,30 +198,15 @@ impl Host {
         key_values: HashMap<String, String>,
     ) -> std::result::Result<Host, ConvertHostError> {
         let host_name = key_values.get(HOST_NAME_KEY).ok_or(ConvertHostError)?;
-        let notifications_enabled = match key_values
-            .get(NOTIFICATIONS_ENABLED_KEY)
-            .ok_or(ConvertHostError)?
-            .as_str()
-        {
-            "0" => Ok(false),
-            "1" => Ok(true),
-            _ => Err(ConvertHostError),
-        }?;
-
-        let active_checks_enabled = match key_values
-            .get(ACTIVE_CHECKS_ENABLED_KEY)
-            .ok_or(ConvertHostError)?
-            .as_str()
-        {
-            "0" => Ok(false),
-            "1" => Ok(true),
-            _ => Err(ConvertHostError),
-        }?;
+        let notifications_enabled = get_bool_value(NOTIFICATIONS_ENABLED_KEY, &key_values)?;
+        let active_checks_enabled = get_bool_value(ACTIVE_CHECKS_ENABLED_KEY, &key_values)?;
+        let passive_checks_enabled = get_bool_value(PASSIVE_CHECKS_ENABLED_KEY, &key_values)?;
 
         Ok(Host {
             host_name: host_name.to_owned(),
             notifications_enabled,
             active_checks_enabled,
+            passive_checks_enabled,
         })
     }
 }
@@ -219,6 +217,7 @@ pub struct Service {
     service_description: String,
     notifications_enabled: bool,
     active_checks_enabled: bool,
+    passive_checks_enabled: bool,
     // TODO add fields as needed
 }
 
@@ -230,31 +229,17 @@ impl Service {
         let service_description = key_values
             .get(SERVICE_DESCRIPTION_KEY)
             .ok_or(ConvertHostError)?;
-        let notifications_enabled = match key_values
-            .get(NOTIFICATIONS_ENABLED_KEY)
-            .ok_or(ConvertHostError)?
-            .as_str()
-        {
-            "0" => Ok(false),
-            "1" => Ok(true),
-            _ => Err(ConvertHostError),
-        }?;
 
-        let active_checks_enabled = match key_values
-            .get(ACTIVE_CHECKS_ENABLED_KEY)
-            .ok_or(ConvertHostError)?
-            .as_str()
-        {
-            "0" => Ok(false),
-            "1" => Ok(true),
-            _ => Err(ConvertHostError),
-        }?;
+        let notifications_enabled = get_bool_value(NOTIFICATIONS_ENABLED_KEY, &key_values)?;
+        let active_checks_enabled = get_bool_value(ACTIVE_CHECKS_ENABLED_KEY, &key_values)?;
+        let passive_checks_enabled = get_bool_value(PASSIVE_CHECKS_ENABLED_KEY, &key_values)?;
 
         Ok(Service {
             host_name: host_name.to_owned(),
             service_description: service_description.to_owned(),
             notifications_enabled,
             active_checks_enabled,
+            passive_checks_enabled,
         })
     }
 }
@@ -353,6 +338,7 @@ mod tests {
         host_name=web01
         notifications_enabled=1
         active_checks_enabled=1
+        passive_checks_enabled=1
     }
 
     servicestatus {
@@ -360,6 +346,7 @@ mod tests {
         service_description=PING
         notifications_enabled=1
         active_checks_enabled=1
+        passive_checks_enabled=1
     }
 
     contactstatus {
@@ -397,6 +384,7 @@ mod tests {
             ("host_name".to_string(), "web01".to_string()),
             ("notifications_enabled".to_string(), "1".to_string()),
             ("active_checks_enabled".to_string(), "1".to_string()),
+            ("passive_checks_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(2).unwrap();
         assert_eq!(block.block_type, BlockType::Host);
@@ -408,6 +396,7 @@ mod tests {
             ("service_description".to_string(), "PING".to_string()),
             ("notifications_enabled".to_string(), "1".to_string()),
             ("active_checks_enabled".to_string(), "1".to_string()),
+            ("passive_checks_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(3).unwrap();
         assert_eq!(block.block_type, BlockType::Service);
@@ -492,6 +481,7 @@ mod tests {
                     host_name: "web01".to_string(),
                     notifications_enabled: true,
                     active_checks_enabled: true,
+                    passive_checks_enabled: true,
                 }
             )])
         );
@@ -505,6 +495,7 @@ mod tests {
                     service_description: "PING".to_string(),
                     notifications_enabled: true,
                     active_checks_enabled: true,
+                    passive_checks_enabled: true,
                 }],
             )])
         );
