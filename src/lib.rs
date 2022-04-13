@@ -54,12 +54,10 @@ impl<P: AsRef<Path>> Nagrs<P> {
         Ok(status.get_host(host_name))
     }
 
-    pub fn find_hosts_regex(&mut self, regex_string: &str) -> nagios::Result<Vec<Host>> {
+    pub fn find_hosts_regex(&mut self, re: &Regex) -> nagios::Result<Vec<Host>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
-        // TODO validate regex_string
-        let re = Regex::new(regex_string).map_err(|_| InvalidRegexError)?;
-        Ok(status.get_hosts_regex(&re))
+        Ok(status.get_hosts_regex(re))
     }
 
     pub fn find_services(&mut self, host_name: &str) -> nagios::Result<Vec<Service>> {

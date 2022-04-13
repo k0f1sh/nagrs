@@ -117,7 +117,6 @@ pub enum NagiosError {
     InvalidKeyValue(String),
     HostNameKeyNotExists,
     ConvertError(ConvertHostError),
-    InvalidRegexError,
 }
 
 impl fmt::Display for NagiosError {
@@ -128,7 +127,6 @@ impl fmt::Display for NagiosError {
             Self::InvalidKeyValue(s) => write!(f, "invalid line: {}", s),
             Self::HostNameKeyNotExists => write!(f, "host name key is not exists"),
             Self::ConvertError(_) => write!(f, "failed to convert"),
-            Self::InvalidRegexError => write!(f, "invalid regex"),
         }
     }
 }
@@ -141,7 +139,6 @@ impl error::Error for NagiosError {
             Self::InvalidKeyValue(_) => None,
             Self::HostNameKeyNotExists => None,
             Self::ConvertError(err) => Some(err),
-            Self::InvalidRegexError => None,
         }
     }
 }
@@ -158,12 +155,6 @@ impl From<ConvertHostError> for NagiosError {
     }
 }
 
-impl From<InvalidRegexError> for NagiosError {
-    fn from(_: InvalidRegexError) -> NagiosError {
-        NagiosError::InvalidRegexError
-    }
-}
-
 impl fmt::Display for ConvertHostError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "failed to convert to host")
@@ -171,18 +162,6 @@ impl fmt::Display for ConvertHostError {
 }
 
 impl error::Error for ConvertHostError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
-
-impl fmt::Display for InvalidRegexError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid regex")
-    }
-}
-
-impl error::Error for InvalidRegexError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
