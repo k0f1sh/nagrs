@@ -175,6 +175,7 @@ const SERVICE_DESCRIPTION_KEY: &str = "service_description";
 const NOTIFICATIONS_ENABLED_KEY: &str = "notifications_enabled";
 const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
 const PASSIVE_CHECKS_ENABLED_KEY: &str = "passive_checks_enabled";
+const CHECK_COMMAND_KEY: &str = "check_command";
 
 type HostName = String;
 
@@ -223,6 +224,7 @@ pub struct Service {
     notifications_enabled: bool,
     active_checks_enabled: bool,
     passive_checks_enabled: bool,
+    check_command: String,
     // TODO add fields as needed
 }
 
@@ -238,6 +240,7 @@ impl Service {
         let notifications_enabled = get_bool_value(NOTIFICATIONS_ENABLED_KEY, &key_values)?;
         let active_checks_enabled = get_bool_value(ACTIVE_CHECKS_ENABLED_KEY, &key_values)?;
         let passive_checks_enabled = get_bool_value(PASSIVE_CHECKS_ENABLED_KEY, &key_values)?;
+        let check_command = key_values.get(CHECK_COMMAND_KEY).ok_or(ConvertHostError)?;
 
         Ok(Service {
             host_name: host_name.to_owned(),
@@ -245,6 +248,7 @@ impl Service {
             notifications_enabled,
             active_checks_enabled,
             passive_checks_enabled,
+            check_command: check_command.to_owned(),
         })
     }
 }
@@ -362,6 +366,7 @@ mod tests {
         notifications_enabled=1
         active_checks_enabled=1
         passive_checks_enabled=1
+        check_command=hoge
     }
 
     contactstatus {
@@ -412,6 +417,7 @@ mod tests {
             ("notifications_enabled".to_string(), "1".to_string()),
             ("active_checks_enabled".to_string(), "1".to_string()),
             ("passive_checks_enabled".to_string(), "1".to_string()),
+            ("check_command".to_string(), "hoge".to_string()),
         ]);
         let block = blocks.get(3).unwrap();
         assert_eq!(block.block_type, BlockType::Service);
@@ -511,6 +517,7 @@ mod tests {
                     notifications_enabled: true,
                     active_checks_enabled: true,
                     passive_checks_enabled: true,
+                    check_command: "hoge".to_string(),
                 }],
             )])
         );
