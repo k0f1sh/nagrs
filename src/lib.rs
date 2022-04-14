@@ -3,6 +3,7 @@ use chrono::Utc;
 use nagios::InvalidRegexError;
 use nagios::NagiosError;
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::Path;
 
 use nagios::{Host, NagiosStatus, Service};
@@ -46,6 +47,12 @@ impl<P: AsRef<Path>> Nagrs<P> {
         }
 
         Ok(())
+    }
+
+    pub fn get_info(&mut self) -> nagios::Result<HashMap<String, String>> {
+        self.load_smartly()?;
+        let status = self.status.as_ref().unwrap();
+        Ok(status.get_info().clone())
     }
 
     pub fn find_host(&mut self, host_name: &str) -> nagios::Result<Option<Host>> {
