@@ -177,14 +177,14 @@ const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
 const PASSIVE_CHECKS_ENABLED_KEY: &str = "passive_checks_enabled";
 const CHECK_COMMAND_KEY: &str = "check_command";
 
-type HostName = String;
+pub type HostName = String;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Host {
-    host_name: HostName,
-    notifications_enabled: bool,
-    active_checks_enabled: bool,
-    passive_checks_enabled: bool,
+    pub host_name: HostName,
+    pub notifications_enabled: bool,
+    pub active_checks_enabled: bool,
+    pub passive_checks_enabled: bool,
     // TODO add fields as needed
 }
 
@@ -219,12 +219,12 @@ impl Host {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Service {
-    host_name: HostName,
-    service_description: String,
-    notifications_enabled: bool,
-    active_checks_enabled: bool,
-    passive_checks_enabled: bool,
-    check_command: String,
+    pub host_name: HostName,
+    pub service_description: String,
+    pub notifications_enabled: bool,
+    pub active_checks_enabled: bool,
+    pub passive_checks_enabled: bool,
+    pub check_command: String,
     // TODO add fields as needed
 }
 
