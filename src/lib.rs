@@ -1,7 +1,6 @@
 use chrono::DateTime;
 use chrono::Utc;
-use nagios::InvalidRegexError;
-use nagios::NagiosError;
+use nagios_cmd::NagiosCmd;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
@@ -10,6 +9,7 @@ use nagios::{Host, NagiosStatus, Service};
 
 mod cmd;
 pub mod nagios;
+pub mod nagios_cmd;
 
 #[derive(Debug)]
 pub struct Nagrs<P: AsRef<Path>> {
@@ -30,6 +30,8 @@ impl<P: AsRef<Path>> Nagrs<P> {
             max_cache_sec,
         }
     }
+
+    /// Get status
 
     fn load(&mut self) -> nagios::Result<()> {
         self.last_loaded = Utc::now();
@@ -71,5 +73,10 @@ impl<P: AsRef<Path>> Nagrs<P> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_host_services(host_name).unwrap_or(Vec::new()))
+    }
+
+    /// cmd
+    pub fn write_cmds(&mut self, cmds: &Vec<Box<dyn NagiosCmd>>) -> std::io::Result<()> {
+        cmd::write_cmds(&self.command_file_path, cmds, &Utc::now())
     }
 }
