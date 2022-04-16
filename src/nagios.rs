@@ -170,21 +170,17 @@ impl error::Error for ConvertHostError {
 ////////////////////////////////////
 // nagios status
 
-const HOST_NAME_KEY: &str = "host_name";
-const SERVICE_DESCRIPTION_KEY: &str = "service_description";
-const NOTIFICATIONS_ENABLED_KEY: &str = "notifications_enabled";
-const ACTIVE_CHECKS_ENABLED_KEY: &str = "active_checks_enabled";
-const PASSIVE_CHECKS_ENABLED_KEY: &str = "passive_checks_enabled";
-const CHECK_COMMAND_KEY: &str = "check_command";
-
 pub type HostName = String;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Host {
     pub host_name: HostName,
-    pub notifications_enabled: bool,
     pub active_checks_enabled: bool,
     pub passive_checks_enabled: bool,
+    pub obsess: bool,
+    pub event_handler_enabled: bool,
+    pub flap_detection_enabled: bool,
+    pub notifications_enabled: bool,
     // TODO add fields as needed
 }
 
@@ -203,16 +199,22 @@ impl Host {
     fn from_key_values(
         key_values: HashMap<String, String>,
     ) -> std::result::Result<Host, ConvertHostError> {
-        let host_name = key_values.get(HOST_NAME_KEY).ok_or(ConvertHostError)?;
-        let notifications_enabled = get_bool_value(NOTIFICATIONS_ENABLED_KEY, &key_values)?;
-        let active_checks_enabled = get_bool_value(ACTIVE_CHECKS_ENABLED_KEY, &key_values)?;
-        let passive_checks_enabled = get_bool_value(PASSIVE_CHECKS_ENABLED_KEY, &key_values)?;
+        let host_name = key_values.get("host_name").ok_or(ConvertHostError)?;
+        let active_checks_enabled = get_bool_value("active_checks_enabled", &key_values)?;
+        let passive_checks_enabled = get_bool_value("passive_checks_enabled", &key_values)?;
+        let obsess = get_bool_value("obsess", &key_values)?;
+        let event_handler_enabled = get_bool_value("event_handler_enabled", &key_values)?;
+        let flap_detection_enabled = get_bool_value("flap_detection_enabled", &key_values)?;
+        let notifications_enabled = get_bool_value("notifications_enabled", &key_values)?;
 
         Ok(Host {
             host_name: host_name.to_owned(),
-            notifications_enabled,
             active_checks_enabled,
             passive_checks_enabled,
+            obsess,
+            event_handler_enabled,
+            flap_detection_enabled,
+            notifications_enabled,
         })
     }
 }
@@ -220,11 +222,14 @@ impl Host {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Service {
     pub host_name: HostName,
+    pub check_command: String,
     pub service_description: String,
-    pub notifications_enabled: bool,
     pub active_checks_enabled: bool,
     pub passive_checks_enabled: bool,
-    pub check_command: String,
+    pub obsess: bool,
+    pub event_handler_enabled: bool,
+    pub flap_detection_enabled: bool,
+    pub notifications_enabled: bool,
     // TODO add fields as needed
 }
 
@@ -232,23 +237,30 @@ impl Service {
     fn from_key_values(
         key_values: HashMap<String, String>,
     ) -> std::result::Result<Service, ConvertHostError> {
-        let host_name = key_values.get(HOST_NAME_KEY).ok_or(ConvertHostError)?;
+        let host_name = key_values.get("host_name").ok_or(ConvertHostError)?;
         let service_description = key_values
-            .get(SERVICE_DESCRIPTION_KEY)
+            .get("service_description")
             .ok_or(ConvertHostError)?;
 
-        let notifications_enabled = get_bool_value(NOTIFICATIONS_ENABLED_KEY, &key_values)?;
-        let active_checks_enabled = get_bool_value(ACTIVE_CHECKS_ENABLED_KEY, &key_values)?;
-        let passive_checks_enabled = get_bool_value(PASSIVE_CHECKS_ENABLED_KEY, &key_values)?;
-        let check_command = key_values.get(CHECK_COMMAND_KEY).ok_or(ConvertHostError)?;
+        let check_command = key_values.get("check_command").ok_or(ConvertHostError)?;
+
+        let active_checks_enabled = get_bool_value("active_checks_enabled", &key_values)?;
+        let passive_checks_enabled = get_bool_value("passive_checks_enabled", &key_values)?;
+        let obsess = get_bool_value("obsess", &key_values)?;
+        let event_handler_enabled = get_bool_value("event_handler_enabled", &key_values)?;
+        let flap_detection_enabled = get_bool_value("flap_detection_enabled", &key_values)?;
+        let notifications_enabled = get_bool_value("notifications_enabled", &key_values)?;
 
         Ok(Service {
             host_name: host_name.to_owned(),
             service_description: service_description.to_owned(),
-            notifications_enabled,
+            check_command: check_command.to_owned(),
             active_checks_enabled,
             passive_checks_enabled,
-            check_command: check_command.to_owned(),
+            obsess,
+            event_handler_enabled,
+            flap_detection_enabled,
+            notifications_enabled,
         })
     }
 }
@@ -358,6 +370,9 @@ mod tests {
         notifications_enabled=1
         active_checks_enabled=1
         passive_checks_enabled=1
+        obsess=1
+        event_handler_enabled=1
+        flap_detection_enabled=1
     }
 
     servicestatus {
@@ -367,6 +382,10 @@ mod tests {
         active_checks_enabled=1
         passive_checks_enabled=1
         check_command=hoge
+        obsess=1
+        event_handler_enabled=1
+        flap_detection_enabled=1
+
     }
 
     contactstatus {
@@ -405,6 +424,9 @@ mod tests {
             ("notifications_enabled".to_string(), "1".to_string()),
             ("active_checks_enabled".to_string(), "1".to_string()),
             ("passive_checks_enabled".to_string(), "1".to_string()),
+            ("obsess".to_string(), "1".to_string()),
+            ("event_handler_enabled".to_string(), "1".to_string()),
+            ("flap_detection_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(2).unwrap();
         assert_eq!(block.block_type, BlockType::Host);
@@ -418,6 +440,9 @@ mod tests {
             ("active_checks_enabled".to_string(), "1".to_string()),
             ("passive_checks_enabled".to_string(), "1".to_string()),
             ("check_command".to_string(), "hoge".to_string()),
+            ("obsess".to_string(), "1".to_string()),
+            ("event_handler_enabled".to_string(), "1".to_string()),
+            ("flap_detection_enabled".to_string(), "1".to_string()),
         ]);
         let block = blocks.get(3).unwrap();
         assert_eq!(block.block_type, BlockType::Service);
@@ -503,6 +528,9 @@ mod tests {
                     notifications_enabled: true,
                     active_checks_enabled: true,
                     passive_checks_enabled: true,
+                    obsess: true,
+                    event_handler_enabled: true,
+                    flap_detection_enabled: true,
                 }
             )])
         );
@@ -517,6 +545,9 @@ mod tests {
                     notifications_enabled: true,
                     active_checks_enabled: true,
                     passive_checks_enabled: true,
+                    obsess: true,
+                    event_handler_enabled: true,
+                    flap_detection_enabled: true,
                     check_command: "hoge".to_string(),
                 }],
             )])
