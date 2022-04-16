@@ -195,10 +195,10 @@ fn get_bool_value(
     }
 }
 
-impl Host {
-    fn from_key_values(
-        key_values: HashMap<String, String>,
-    ) -> std::result::Result<Host, ConvertHostError> {
+impl TryFrom<HashMap<String, String>> for Host {
+    type Error = NagiosError;
+
+    fn try_from(key_values: HashMap<String, String>) -> std::result::Result<Self, Self::Error> {
         let host_name = key_values.get("host_name").ok_or(ConvertHostError)?;
         let active_checks_enabled = get_bool_value("active_checks_enabled", &key_values)?;
         let passive_checks_enabled = get_bool_value("passive_checks_enabled", &key_values)?;
@@ -233,10 +233,10 @@ pub struct Service {
     // TODO add fields as needed
 }
 
-impl Service {
-    fn from_key_values(
-        key_values: HashMap<String, String>,
-    ) -> std::result::Result<Service, ConvertHostError> {
+impl TryFrom<HashMap<String, String>> for Service {
+    type Error = NagiosError;
+
+    fn try_from(key_values: HashMap<String, String>) -> std::result::Result<Self, Self::Error> {
         let host_name = key_values.get("host_name").ok_or(ConvertHostError)?;
         let service_description = key_values
             .get("service_description")
@@ -300,11 +300,11 @@ impl NagiosStatus {
                     status.program = block.key_values;
                 }
                 BlockType::Host => {
-                    let host = Host::from_key_values(block.key_values)?;
+                    let host = Host::try_from(block.key_values)?;
                     status.hosts.insert(host.host_name.to_owned(), host);
                 }
                 BlockType::Service => {
-                    let service = Service::from_key_values(block.key_values)?;
+                    let service = Service::try_from(block.key_values)?;
                     let host_services = status.services.get_mut(&service.host_name);
                     match host_services {
                         Some(host_service) => host_service.push(service),
