@@ -1,10 +1,3 @@
-use std::io::BufWriter;
-use std::io::Write;
-use std::path::Path;
-
-use chrono::DateTime;
-use chrono::Utc;
-
 pub trait NagiosCmd {
     fn to_cmd_string(&self) -> String;
 }
@@ -53,6 +46,9 @@ impl NagiosCmd for DisableHostGroupHostChecks {
 #[cfg(test)]
 mod tests {
     use crate::cmd;
+    use chrono::DateTime;
+    use chrono::Utc;
+    use std::io::BufWriter;
 
     use super::*;
 
