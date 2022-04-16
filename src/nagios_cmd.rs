@@ -71,12 +71,28 @@ mod tests {
         }
     }
 
+    struct TestCase {
+        cmd: Box<dyn NagiosCmd>,
+        expected: &'static str,
+    }
+
     #[test]
     fn test_write_cmd_line() {
-        let cmd = Box::new(EnableHostGroupHostChecks::new("localhost".to_string()));
-        assert_eq!(
-            written_string(cmd),
-            "[1647824400] ENABLE_HOSTGROUP_HOST_CHECKS;localhost\n"
-        );
+        let test_cases = vec![
+            // ENABLE_HOSTGROUP_HOST_CHECKS
+            TestCase {
+                cmd: Box::new(EnableHostGroupHostChecks::new("localhost".to_string())),
+                expected: "[1647824400] ENABLE_HOSTGROUP_HOST_CHECKS;localhost\n",
+            },
+            // DISABLE_HOSTGROUP_HOST_CHECKS
+            TestCase {
+                cmd: Box::new(DisableHostGroupHostChecks::new("localhost".to_string())),
+                expected: "[1647824400] DISABLE_HOSTGROUP_HOST_CHECKS;localhost\n",
+            },
+        ];
+
+        for test_case in test_cases {
+            assert_eq!(written_string(test_case.cmd), test_case.expected);
+        }
     }
 }
