@@ -110,15 +110,18 @@ fn get_f64(
 fn get_datetime(
     key: &str,
     key_values: &HashMap<String, String>,
-) -> std::result::Result<DateTime<Utc>, ConvertError> {
+) -> std::result::Result<Option<DateTime<Utc>>, ConvertError> {
     let s = get_raw(key, key_values)?;
+    if s.as_str() == "0" {
+        return Ok(None);
+    }
     let timestamp = s
         .parse::<i64>()
         .map_err(|_| ConvertError::FailedToParse(s.to_string(), "DateTime<Utc>".to_string()))?;
-    Ok(DateTime::<Utc>::from_utc(
+    Ok(Some(DateTime::<Utc>::from_utc(
         NaiveDateTime::from_timestamp(timestamp, 0),
         Utc,
-    ))
+    )))
 }
 
 fn get_check_type(
@@ -190,18 +193,18 @@ pub struct Host {
     pub plugin_output: String,
     pub long_plugin_output: String,
     pub performance_data: String,
-    pub last_check: DateTime<Utc>,
-    pub next_check: DateTime<Utc>,
+    pub last_check: Option<DateTime<Utc>>,
+    pub next_check: Option<DateTime<Utc>>,
     pub current_attempt: u32,
     pub max_attempts: u32,
     pub state_type: StateType,
-    pub last_state_change: DateTime<Utc>, // TODO Optional
-    pub last_hard_state_change: DateTime<Utc>,
-    pub last_time_up: DateTime<Utc>,
-    pub last_time_down: DateTime<Utc>,
-    pub last_time_unreachable: DateTime<Utc>,
-    pub last_notification: DateTime<Utc>,
-    pub next_notification: DateTime<Utc>,
+    pub last_state_change: Option<DateTime<Utc>>,
+    pub last_hard_state_change: Option<DateTime<Utc>>,
+    pub last_time_up: Option<DateTime<Utc>>,
+    pub last_time_down: Option<DateTime<Utc>>,
+    pub last_time_unreachable: Option<DateTime<Utc>>,
+    pub last_notification: Option<DateTime<Utc>>,
+    pub next_notification: Option<DateTime<Utc>>,
     pub no_more_notifications: bool,
     pub current_notification_number: u32,
     pub notifications_enabled: bool,
@@ -213,7 +216,7 @@ pub struct Host {
     pub flap_detection_enabled: bool,
     pub process_performance_data: bool,
     pub obsess: bool,
-    pub last_update: DateTime<Utc>,
+    pub last_update: Option<DateTime<Utc>>,
     pub is_flapping: bool,
     pub percent_state_change: f64,
     pub scheduled_downtime_depth: u32,
@@ -412,11 +415,12 @@ mod tests {
 
     #[test]
     fn test_get_datetime() {
-        struct TestCase<'a>(&'a str, Result<DateTime<Utc>, ConvertError>);
+        struct TestCase<'a>(&'a str, Result<Option<DateTime<Utc>>, ConvertError>);
         let test_cases = vec![
+            TestCase("0", Ok(None)),
             TestCase(
                 "1647775378",
-                Ok(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58)),
+                Ok(Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58))),
             ),
             TestCase(
                 "hoge",
@@ -597,43 +601,25 @@ mod tests {
         );
         assert_eq!(
             host.last_check,
-            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58)
+            Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58))
         );
         assert_eq!(
             host.next_check,
-            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 27, 58)
+            Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 27, 58))
         );
         assert_eq!(host.current_attempt, 1);
         assert_eq!(host.max_attempts, 10);
         assert_eq!(host.state_type, StateType::Hard);
-        assert_eq!(
-            host.last_state_change,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
-        assert_eq!(
-            host.last_hard_state_change,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
+        assert_eq!(host.last_state_change, None);
+        assert_eq!(host.last_hard_state_change, None);
         assert_eq!(
             host.last_time_up,
-            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58)
+            Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58))
         );
-        assert_eq!(
-            host.last_time_down,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
-        assert_eq!(
-            host.last_time_unreachable,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
-        assert_eq!(
-            host.last_notification,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
-        assert_eq!(
-            host.next_notification,
-            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
-        );
+        assert_eq!(host.last_time_down, None);
+        assert_eq!(host.last_time_unreachable, None);
+        assert_eq!(host.last_notification, None);
+        assert_eq!(host.next_notification, None);
         assert_eq!(host.no_more_notifications, false);
         assert_eq!(host.current_notification_number, 0);
         assert_eq!(host.notifications_enabled, true);
@@ -647,7 +633,7 @@ mod tests {
         assert_eq!(host.obsess, true);
         assert_eq!(
             host.last_update,
-            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 23, 57)
+            Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 23, 57))
         );
         assert_eq!(host.is_flapping, false);
         assert_eq!(host.percent_state_change, 0.00);
