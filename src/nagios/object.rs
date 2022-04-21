@@ -31,6 +31,12 @@ pub enum AcknowledgementType {
     Sticky, // 2
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum StateType {
+    Soft, // 0
+    Hard, // 1
+}
+
 ////////////////////////////////////
 // error
 
@@ -48,6 +54,8 @@ pub enum ConvertError {
     InvalidCheckTypeValue(String),
     #[error("invalid acknowledgement type value: {0}")]
     InvalidAcknowledgementTypeValue(String),
+    #[error("invalid state type value: {0}")]
+    InvalidStateTypeValue(String),
 }
 
 ////////////////////////////////////
@@ -151,6 +159,17 @@ fn get_acknowledgement_type(
     }
 }
 
+fn get_state_type(
+    key: &str,
+    key_values: &HashMap<String, String>,
+) -> std::result::Result<StateType, ConvertError> {
+    match get_raw(key, key_values)?.as_str() {
+        "0" => Ok(StateType::Soft),
+        "1" => Ok(StateType::Hard),
+        s => Err(ConvertError::InvalidStateTypeValue(s.into())),
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Host {
     pub host_name: String,
@@ -171,6 +190,12 @@ pub struct Host {
     pub plugin_output: String,
     pub long_plugin_output: String,
     pub performance_data: String,
+    pub last_check: DateTime<Utc>,
+    pub next_check: DateTime<Utc>,
+    pub current_attempt: u32,
+    pub max_attempts: u32,
+    pub state_type: StateType,
+    pub last_state_change: DateTime<Utc>, // TODO Optional
     pub last_hard_state_change: DateTime<Utc>,
     pub last_time_up: DateTime<Utc>,
     pub last_time_down: DateTime<Utc>,
@@ -193,6 +218,7 @@ pub struct Host {
     pub percent_state_change: f64,
     pub scheduled_downtime_depth: u32,
     // TODO modified_attributes
+    // TODO check_options
     // TODO *_id
     // TODO custom variables
 }
@@ -220,6 +246,12 @@ impl TryFrom<HashMap<String, String>> for Host {
             plugin_output: get_string("plugin_output", &key_values)?,
             long_plugin_output: get_string("long_plugin_output", &key_values)?,
             performance_data: get_string("performance_data", &key_values)?,
+            last_check: get_datetime("last_check", &key_values)?,
+            next_check: get_datetime("next_check", &key_values)?,
+            current_attempt: get_u32("current_attempt", &key_values)?,
+            max_attempts: get_u32("max_attempts", &key_values)?,
+            state_type: get_state_type("state_type", &key_values)?,
+            last_state_change: get_datetime("last_state_change", &key_values)?,
             last_hard_state_change: get_datetime("last_hard_state_change", &key_values)?,
             last_time_up: get_datetime("last_time_up", &key_values)?,
             last_time_down: get_datetime("last_time_down", &key_values)?,
@@ -461,6 +493,24 @@ mod tests {
     }
 
     #[test]
+    fn test_get_state_type() {
+        struct TestCase<'a>(&'a str, Result<StateType, ConvertError>);
+        let test_cases = vec![
+            TestCase("0", Ok(StateType::Soft)),
+            TestCase("1", Ok(StateType::Hard)),
+            TestCase(
+                "hoge",
+                Err(ConvertError::InvalidStateTypeValue("hoge".into())),
+            ),
+        ];
+        for test_case in test_cases {
+            let key_values: HashMap<String, String> =
+                HashMap::from([("key".into(), test_case.0.into())]);
+            assert_eq!(get_state_type("key", &key_values), test_case.1);
+        }
+    }
+
+    #[test]
     fn host_try_from() {
         let key_values = HashMap::from([
             ("host_name".into(), "localhost".into()),
@@ -478,7 +528,6 @@ mod tests {
             ("check_type".into(), "0".into()),
             ("current_state".into(), "0".into()),
             ("last_hard_state".into(), "0".into()),
-            ("last_event_id".into(), "0".into()),
             (
                 "plugin_output".into(),
                 "PING OK - Packet loss = 0%, RTA = 0.04 ms".into(),
@@ -490,7 +539,7 @@ mod tests {
             ),
             ("last_check".into(), "1647775378".into()),
             ("next_check".into(), "1647775678".into()),
-            ("check_options".into(), "0".into()),
+            //("check_options".into(), "0".into()),
             ("current_attempt".into(), "1".into()),
             ("max_attempts".into(), "10".into()),
             ("state_type".into(), "1".into()),
@@ -523,11 +572,85 @@ mod tests {
 
         let host = host.unwrap();
         assert_eq!(host.host_name, "localhost".to_string());
+        assert_eq!(host.check_command, "check-host-alive".to_string());
+        assert_eq!(host.check_period, "24x7".to_string());
+        assert_eq!(host.notification_period, "workhours".to_string());
+        assert_eq!(host.importance, 0);
+        assert_eq!(host.check_interval, 5.0);
+        assert_eq!(host.retry_interval, 1.0);
+        assert_eq!(host.event_handler, "".to_string());
+        assert_eq!(host.has_been_checked, true);
+        assert_eq!(host.should_be_scheduled, true);
+        assert_eq!(host.check_execution_time, 4.196);
+        assert_eq!(host.check_latency, 0.368);
+        assert_eq!(host.check_type, CheckType::Active);
+        assert_eq!(host.current_state, HostState::Up);
+        assert_eq!(host.last_hard_state, HostState::Up);
+        assert_eq!(
+            host.plugin_output,
+            "PING OK - Packet loss = 0%, RTA = 0.04 ms".to_string()
+        );
+        assert_eq!(host.long_plugin_output, "".to_string());
+        assert_eq!(
+            host.performance_data,
+            "rta=0.041000ms;3000.000000;5000.000000;0.000000 pl=0%;80;100;0".to_string()
+        );
+        assert_eq!(
+            host.last_check,
+            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58)
+        );
+        assert_eq!(
+            host.next_check,
+            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 27, 58)
+        );
+        assert_eq!(host.current_attempt, 1);
+        assert_eq!(host.max_attempts, 10);
+        assert_eq!(host.state_type, StateType::Hard);
+        assert_eq!(
+            host.last_state_change,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(
+            host.last_hard_state_change,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(
+            host.last_time_up,
+            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 22, 58)
+        );
+        assert_eq!(
+            host.last_time_down,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(
+            host.last_time_unreachable,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(
+            host.last_notification,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(
+            host.next_notification,
+            chrono::Utc.ymd(1970, 1, 1).and_hms(0, 0, 0)
+        );
+        assert_eq!(host.no_more_notifications, false);
+        assert_eq!(host.current_notification_number, 0);
+        assert_eq!(host.notifications_enabled, true);
+        assert_eq!(host.problem_has_been_acknowledged, false);
+        assert_eq!(host.acknowledgement_type, AcknowledgementType::None);
         assert_eq!(host.active_checks_enabled, true);
         assert_eq!(host.passive_checks_enabled, true);
-        assert_eq!(host.obsess, true);
         assert_eq!(host.event_handler_enabled, true);
         assert_eq!(host.flap_detection_enabled, true);
-        assert_eq!(host.notifications_enabled, true);
+        assert_eq!(host.process_performance_data, true);
+        assert_eq!(host.obsess, true);
+        assert_eq!(
+            host.last_update,
+            chrono::Utc.ymd(2022, 3, 20).and_hms(11, 23, 57)
+        );
+        assert_eq!(host.is_flapping, false);
+        assert_eq!(host.percent_state_change, 0.00);
+        assert_eq!(host.scheduled_downtime_depth, 0);
     }
 }
