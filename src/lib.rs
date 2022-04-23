@@ -1,11 +1,14 @@
+use crate::nagios::object::Host;
+use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
+use nagios::object::Service;
 use nagios_cmd::NagiosCmd;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
 
-use nagios::{Host, NagiosStatus, Service};
+use nagios::NagiosStatus;
 
 mod cmd;
 pub mod nagios;
@@ -33,14 +36,14 @@ impl<P: AsRef<Path>> Nagrs<P> {
 
     /// Get status
 
-    fn load(&mut self) -> nagios::Result<()> {
+    fn load(&mut self) -> Result<()> {
         self.last_loaded = Utc::now();
         let status = NagiosStatus::parse_file(&self.status_file_path)?;
         self.status = Some(status);
         Ok(())
     }
 
-    fn load_smartly(&mut self) -> nagios::Result<()> {
+    fn load_smartly(&mut self) -> Result<()> {
         let now = Utc::now();
         let diff = now - self.last_loaded;
 
@@ -51,25 +54,25 @@ impl<P: AsRef<Path>> Nagrs<P> {
         Ok(())
     }
 
-    pub fn get_info(&mut self) -> nagios::Result<HashMap<String, String>> {
+    pub fn get_info(&mut self) -> Result<HashMap<String, String>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_info().clone())
     }
 
-    pub fn find_host(&mut self, host_name: &str) -> nagios::Result<Option<Host>> {
+    pub fn find_host(&mut self, host_name: &str) -> Result<Option<Host>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_host(host_name))
     }
 
-    pub fn find_hosts_regex(&mut self, re: &Regex) -> nagios::Result<Vec<Host>> {
+    pub fn find_hosts_regex(&mut self, re: &Regex) -> Result<Vec<Host>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_hosts_regex(re))
     }
 
-    pub fn find_services(&mut self, host_name: &str) -> nagios::Result<Vec<Service>> {
+    pub fn find_services(&mut self, host_name: &str) -> Result<Vec<Service>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
         Ok(status.get_host_services(host_name).unwrap_or(Vec::new()))
