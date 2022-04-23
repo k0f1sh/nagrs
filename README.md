@@ -4,7 +4,7 @@
 
 example code
 
-```
+```rust
 use nagrs::Nagrs;
 
 fn main() {
@@ -18,7 +18,7 @@ fn main() {
 ```
 
 output
-```
+```rust
 Some(
     Host {
         host_name: "localhost",
