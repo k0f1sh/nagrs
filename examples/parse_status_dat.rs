@@ -1,29 +1,10 @@
 use nagrs::Nagrs;
 
 fn main() {
-    let mut nagrs = Nagrs::new("", "testdata/status.dat", 10);
+    let command_file_path = "/usr/local/nagios/var/rw/nagios.cmd";
+    let status_file_path = "/usr/local/nagios/var/status.dat";
+    let mut nagrs = Nagrs::new(command_file_path, status_file_path, 10);
 
-    let host = nagrs.find_host("localhost");
-    match &host {
-        Ok(host) => {
-            println!("ok!");
-            println!("{:#?}", host);
-        }
-        Err(error) => {
-            println!("error!");
-            println!("{:#?}", error);
-        }
-    };
-
-    let services = nagrs.find_services("localhost");
-    match &services {
-        Ok(services) => {
-            println!("ok!");
-            println!("{:#?}", services);
-        }
-        Err(error) => {
-            println!("error!");
-            println!("{:#?}", error);
-        }
-    };
+    let host = nagrs.find_host("localhost").unwrap();
+    println!("{:#?}", host);
 }
