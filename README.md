@@ -2,6 +2,8 @@
 
 ## Usage
 
+example code
+
 ```
 use nagrs::Nagrs;
 
@@ -15,7 +17,7 @@ fn main() {
 }
 ```
 
-result:
+output
 ```
 Some(
     Host {
