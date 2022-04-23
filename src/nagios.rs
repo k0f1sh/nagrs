@@ -1,4 +1,5 @@
 mod block;
+pub mod cmd;
 pub mod object;
 
 use anyhow::Result;

@@ -1,5 +1,18 @@
+use std::io::BufWriter;
+use std::io::Write;
+
 pub trait NagiosCmd {
     fn to_cmd_string(&self) -> String;
+}
+
+pub fn write_cmd_line<W: Write>(
+    cmd: &Box<dyn NagiosCmd>,
+    timestamp: i64,
+    writer: &mut BufWriter<W>,
+) -> std::io::Result<()> {
+    let cmd_str = cmd.to_cmd_string();
+    writer.write(format!("[{}] {}\n", timestamp, cmd_str).as_bytes())?;
+    Ok(())
 }
 
 //////////////////////////////////
@@ -225,7 +238,6 @@ impl NagiosCmd for DisableSvcNotifications {
 
 #[cfg(test)]
 mod tests {
-    use crate::cmd;
     use chrono::DateTime;
     use chrono::Utc;
     use std::io::BufWriter;
@@ -239,7 +251,7 @@ mod tests {
             .unwrap()
             .with_timezone(&Utc);
         let mut buf = BufWriter::new(vec![]);
-        let result = cmd::write_cmd_line(&cmd, datetime.timestamp(), &mut buf);
+        let result = write_cmd_line(&cmd, datetime.timestamp(), &mut buf);
 
         match result {
             Err(_) => "".to_string(),

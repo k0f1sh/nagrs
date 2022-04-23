@@ -2,17 +2,16 @@ use crate::nagios::object::Host;
 use anyhow::Result;
 use chrono::DateTime;
 use chrono::Utc;
+use nagios::cmd::NagiosCmd;
 use nagios::object::Service;
-use nagios_cmd::NagiosCmd;
 use regex::Regex;
 use std::collections::HashMap;
+use std::io::BufWriter;
 use std::path::Path;
 
 use nagios::NagiosStatus;
 
-mod cmd;
 pub mod nagios;
-pub mod nagios_cmd;
 
 #[derive(Debug)]
 pub struct Nagrs<P: AsRef<Path>> {
@@ -80,6 +79,13 @@ impl<P: AsRef<Path>> Nagrs<P> {
 
     /// cmd
     pub fn write_cmds(&mut self, cmds: &Vec<Box<dyn NagiosCmd>>) -> std::io::Result<()> {
-        cmd::write_cmds(&self.command_file_path, cmds, &Utc::now())
+        let timestamp = Utc::now().timestamp();
+        let file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&self.command_file_path)?;
+        let mut writer = BufWriter::new(file);
+        cmds.iter()
+            .try_for_each(|cmd| nagios::cmd::write_cmd_line(cmd, timestamp, &mut writer))?;
+        Ok(())
     }
 }
