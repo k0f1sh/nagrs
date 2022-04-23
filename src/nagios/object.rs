@@ -37,6 +37,24 @@ pub enum StateType {
     Hard, // 1
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModifiedAttributes(u32);
+
+impl From<u32> for ModifiedAttributes {
+    fn from(u: u32) -> Self {
+        ModifiedAttributes(u)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CheckOptions(u32);
+
+impl From<u32> for CheckOptions {
+    fn from(u: u32) -> Self {
+        CheckOptions(u)
+    }
+}
+
 ////////////////////////////////////
 // error
 
@@ -176,6 +194,7 @@ fn get_state_type(
 #[derive(Debug, PartialEq, Clone)]
 pub struct Host {
     pub host_name: String,
+    pub modified_attributes: ModifiedAttributes,
     pub check_command: String,
     pub check_period: String,
     pub notification_period: String,
@@ -195,6 +214,7 @@ pub struct Host {
     pub performance_data: String,
     pub last_check: Option<DateTime<Utc>>,
     pub next_check: Option<DateTime<Utc>>,
+    pub check_options: CheckOptions,
     pub current_attempt: u32,
     pub max_attempts: u32,
     pub state_type: StateType,
@@ -220,8 +240,6 @@ pub struct Host {
     pub is_flapping: bool,
     pub percent_state_change: f64,
     pub scheduled_downtime_depth: u32,
-    // TODO modified_attributes
-    // TODO check_options
     // TODO *_id
     // TODO custom variables
 }
@@ -232,6 +250,7 @@ impl TryFrom<HashMap<String, String>> for Host {
     fn try_from(key_values: HashMap<String, String>) -> std::result::Result<Self, Self::Error> {
         Ok(Host {
             host_name: get_string("host_name", &key_values)?,
+            modified_attributes: get_u32("modified_attributes", &key_values)?.into(),
             check_command: get_string("check_command", &key_values)?,
             check_period: get_string("check_period", &key_values)?,
             notification_period: get_string("notification_period", &key_values)?,
@@ -251,6 +270,7 @@ impl TryFrom<HashMap<String, String>> for Host {
             performance_data: get_string("performance_data", &key_values)?,
             last_check: get_datetime("last_check", &key_values)?,
             next_check: get_datetime("next_check", &key_values)?,
+            check_options: get_u32("check_options", &key_values)?.into(),
             current_attempt: get_u32("current_attempt", &key_values)?,
             max_attempts: get_u32("max_attempts", &key_values)?,
             state_type: get_state_type("state_type", &key_values)?,
@@ -518,6 +538,7 @@ mod tests {
     fn host_try_from() {
         let key_values = HashMap::from([
             ("host_name".into(), "localhost".into()),
+            ("modified_attributes".into(), "0".into()),
             ("check_command".into(), "check-host-alive".into()),
             ("check_period".into(), "24x7".into()),
             ("notification_period".into(), "workhours".into()),
@@ -543,7 +564,7 @@ mod tests {
             ),
             ("last_check".into(), "1647775378".into()),
             ("next_check".into(), "1647775678".into()),
-            //("check_options".into(), "0".into()),
+            ("check_options".into(), "0".into()),
             ("current_attempt".into(), "1".into()),
             ("max_attempts".into(), "10".into()),
             ("state_type".into(), "1".into()),
@@ -576,6 +597,7 @@ mod tests {
 
         let host = host.unwrap();
         assert_eq!(host.host_name, "localhost".to_string());
+        assert_eq!(host.modified_attributes, ModifiedAttributes(0));
         assert_eq!(host.check_command, "check-host-alive".to_string());
         assert_eq!(host.check_period, "24x7".to_string());
         assert_eq!(host.notification_period, "workhours".to_string());
@@ -607,6 +629,7 @@ mod tests {
             host.next_check,
             Some(chrono::Utc.ymd(2022, 3, 20).and_hms(11, 27, 58))
         );
+        assert_eq!(host.check_options, CheckOptions(0));
         assert_eq!(host.current_attempt, 1);
         assert_eq!(host.max_attempts, 10);
         assert_eq!(host.state_type, StateType::Hard);
