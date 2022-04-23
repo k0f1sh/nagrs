@@ -1,4 +1,4 @@
-# [WIP] A library for managing Nagios.
+# [WIP] A library to get status and write commands for Nagios.
 
 ## Usage
 
