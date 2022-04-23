@@ -212,7 +212,7 @@ fn get_state_type(
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Host {
     pub host_name: String,
     pub modified_attributes: ModifiedAttributes,
@@ -321,7 +321,7 @@ impl TryFrom<HashMap<String, String>> for Host {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Service {
     pub host_name: String,
     pub service_description: String,
