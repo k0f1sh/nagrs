@@ -59,6 +59,12 @@ impl<P: AsRef<Path>> Nagrs<P> {
         Ok(status.get_info().clone())
     }
 
+    pub fn get_program(&mut self) -> Result<HashMap<String, String>> {
+        self.load_smartly()?;
+        let status = self.status.as_ref().unwrap();
+        Ok(status.get_program().clone())
+    }
+
     pub fn find_host(&mut self, host_name: &str) -> Result<Option<Host>> {
         self.load_smartly()?;
         let status = self.status.as_ref().unwrap();
