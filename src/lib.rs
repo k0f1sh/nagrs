@@ -92,11 +92,10 @@ impl<P: AsRef<Path>> Nagrs<P> {
         let mut writer = BufWriter::new(file);
         cmds.iter()
             .try_for_each(|cmd| nagios::cmd::write_cmd_line(cmd, timestamp, &mut writer))?;
-        self.clear_cache();
         Ok(())
     }
 
-    fn clear_cache(&mut self) -> () {
+    pub fn clear_cache(&mut self) -> () {
         self.status = None;
     }
 }
