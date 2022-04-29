@@ -103,6 +103,38 @@ pub struct DisableSvcNotifications {
     pub service_description: String,
 }
 
+//////////////////////////////////
+/// ENABLE_HOST_SVC_CHECKS
+
+#[derive(Debug, NagiosCmd)]
+pub struct EnableHostSvcChecks {
+    pub host_name: String,
+}
+
+//////////////////////////////////
+/// DISABLE_HOST_SVC_CHECKS
+
+#[derive(Debug, NagiosCmd)]
+pub struct DisableHostSvcChecks {
+    pub host_name: String,
+}
+
+//////////////////////////////////
+/// ENABLE_HOST_SVC_NOTIFICATIONS
+
+#[derive(Debug, NagiosCmd)]
+pub struct EnableHostSvcNotifications {
+    pub host_name: String,
+}
+
+//////////////////////////////////
+/// DISABLE_HOST_SVC_NOTIFICATIONS
+
+#[derive(Debug, NagiosCmd)]
+pub struct DisableHostSvcNotifications {
+    pub host_name: String,
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::DateTime;
@@ -207,6 +239,34 @@ mod tests {
                     service_description: "Current Load".to_string(),
                 }),
                 expected: "[1647824400] DISABLE_SVC_NOTIFICATIONS;localhost;Current Load\n",
+            },
+            // ENABLE_HOST_SVC_CHECKS
+            TestCase {
+                cmd: Box::new(EnableHostSvcChecks {
+                    host_name: "localhost".to_string(),
+                }),
+                expected: "[1647824400] ENABLE_HOST_SVC_CHECKS;localhost\n",
+            },
+            // DISABLE_HOST_SVC_CHECKS
+            TestCase {
+                cmd: Box::new(DisableHostSvcChecks {
+                    host_name: "localhost".to_string(),
+                }),
+                expected: "[1647824400] DISABLE_HOST_SVC_CHECKS;localhost\n",
+            },
+            // ENABLE_HOST_SVC_NOTIFICATIONS
+            TestCase {
+                cmd: Box::new(EnableHostSvcNotifications {
+                    host_name: "localhost".to_string(),
+                }),
+                expected: "[1647824400] ENABLE_HOST_SVC_NOTIFICATIONS;localhost\n",
+            },
+            // DISABLE_HOST_SVC_NOTIFICATIONS
+            TestCase {
+                cmd: Box::new(DisableHostSvcNotifications {
+                    host_name: "localhost".to_string(),
+                }),
+                expected: "[1647824400] DISABLE_HOST_SVC_NOTIFICATIONS;localhost\n",
             },
         ];
 
