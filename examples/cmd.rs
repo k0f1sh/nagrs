@@ -1,7 +1,7 @@
 use nagrs::Nagrs;
 
 fn main() {
-    let mut nagrs = Nagrs::new("testdata/nagios.cmd", "testdata/status.dat", 10);
+    let nagrs = Nagrs::new("testdata/nagios.cmd", "testdata/status.dat");
     let cmd = nagrs::nagios::cmd::DisableHostgroupHostChecks {
         hostgroup_name: "localhost".to_string(),
     };
