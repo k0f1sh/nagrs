@@ -2,14 +2,14 @@ mod block;
 pub mod cmd;
 pub mod object;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::path::Path;
 
-use self::block::{Block, BlockType};
+use self::block::{Block, BlockType, ParseError};
 use self::object::{Host, Service};
 
 #[derive(Debug)]
@@ -25,11 +25,13 @@ impl NagiosStatus {
     pub fn parse_file<P: AsRef<Path>>(path: P) -> Result<NagiosStatus> {
         let file = File::open(path)?;
         let buf = io::BufReader::new(file);
-        let blocks = Block::parse(buf)?;
+        let blocks = Block::to_blocks(buf);
         Self::from_blocks(blocks)
     }
 
-    fn from_blocks(blocks: Vec<Block>) -> Result<NagiosStatus> {
+    fn from_blocks<I: Iterator<Item = Result<Block, ParseError>>>(
+        blocks: I,
+    ) -> Result<NagiosStatus> {
         let mut status = NagiosStatus {
             info: HashMap::new(),
             program: HashMap::new(),
@@ -39,31 +41,34 @@ impl NagiosStatus {
         };
 
         for block in blocks {
-            match &block.block_type {
-                BlockType::Info => {
-                    status.info = block.key_values;
-                }
-                BlockType::Program => {
-                    status.program = block.key_values;
-                }
-                BlockType::Host => {
-                    let host = Host::try_from(block.key_values)?;
-                    status.hosts.insert(host.host_name.to_owned(), host);
-                }
-                BlockType::Service => {
-                    let service = Service::try_from(block.key_values)?;
-                    let host_services = status.services.get_mut(&service.host_name);
-                    match host_services {
-                        Some(host_service) => host_service.push(service),
-                        None => {
-                            status
-                                .services
-                                .insert(service.host_name.to_string(), vec![service]);
+            match block {
+                Ok(block) => match &block.block_type {
+                    BlockType::Info => {
+                        status.info = block.key_values;
+                    }
+                    BlockType::Program => {
+                        status.program = block.key_values;
+                    }
+                    BlockType::Host => {
+                        let host = Host::try_from(block.key_values)?;
+                        status.hosts.insert(host.host_name.to_owned(), host);
+                    }
+                    BlockType::Service => {
+                        let service = Service::try_from(block.key_values)?;
+                        let host_services = status.services.get_mut(&service.host_name);
+                        match host_services {
+                            Some(host_service) => host_service.push(service),
+                            None => {
+                                status
+                                    .services
+                                    .insert(service.host_name.to_string(), vec![service]);
+                            }
                         }
                     }
-                }
-                BlockType::Contact => status.contacts.push(block.key_values),
-                _ => {}
+                    BlockType::Contact => status.contacts.push(block.key_values),
+                    _ => {}
+                },
+                Err(error) => return Err(anyhow!("{}", error)),
             }
         }
 

@@ -8,6 +8,8 @@ pub enum ParseError {
     InvalidKeyValue(String),
     #[error("unexpected line: {0}")]
     UnexpectedLine(String),
+    #[error("unexpected end of line")]
+    UnexpectedEndOfLine,
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,9 +43,15 @@ enum ParseState {
     Outside,
 }
 
-impl Block {
-    pub fn parse<R: Read>(buf: io::BufReader<R>) -> Result<Vec<Block>, ParseError> {
-        let lines = buf
+struct Lines<'a> {
+    iter: Box<dyn Iterator<Item = String> + 'a>,
+}
+
+impl<'a> Block {
+    pub fn to_blocks<R: Read + 'a>(
+        buf: io::BufReader<R>,
+    ) -> impl Iterator<Item = Result<Block, ParseError>> + 'a {
+        let iter = buf
             .lines()
             .filter(|r| r.is_ok())
             .map(|r| r.unwrap())
@@ -51,25 +59,45 @@ impl Block {
             .filter(|line| line.len() > 0)
             .filter(|line| line.chars().nth(0).unwrap() != '#');
 
-        let mut blocks: Vec<Block> = vec![];
+        let lines = Lines {
+            iter: Box::new(iter),
+        };
+
+        lines.into_iter()
+    }
+}
+
+fn select_block_type(line: &str) -> Result<BlockType, ParseError> {
+    match line {
+        "info {" => Ok(BlockType::Info),
+        "programstatus {" => Ok(BlockType::Program),
+        "hoststatus {" => Ok(BlockType::Host),
+        "servicestatus {" => Ok(BlockType::Service),
+        "contactstatus {" => Ok(BlockType::Contact),
+        _ => Err(ParseError::UnexpectedLine(line.to_string())),
+    }
+}
+
+impl<'a> Iterator for Lines<'a> {
+    type Item = Result<Block, ParseError>;
+
+    fn next(&mut self) -> Option<Result<Block, ParseError>> {
         let mut tmp_block = Block::new();
-
         let mut current_state: ParseState = ParseState::Outside;
+        let iter = &mut self.iter;
 
-        for line in lines {
+        for line in iter {
             match &current_state {
-                ParseState::Outside => match Self::select_block_type(line.as_str()) {
+                ParseState::Outside => match select_block_type(line.as_str()) {
                     Ok(block_type) => {
                         tmp_block.block_type = block_type;
                         current_state = ParseState::WithinBlock;
                     }
-                    Err(error) => return Err(error),
+                    Err(error) => return Some(Err(error)),
                 },
                 ParseState::WithinBlock => match line.as_str() {
                     "}" => {
-                        blocks.push(tmp_block);
-                        tmp_block = Block::new();
-                        current_state = ParseState::Outside;
+                        return Some(Ok(tmp_block));
                     }
                     s => match s.split_once('=') {
                         Some((key, value)) => {
@@ -78,25 +106,18 @@ impl Block {
                                 .insert(key.to_string(), value.to_string());
                         }
                         None => {
-                            return Err(ParseError::InvalidKeyValue(s.to_string()));
+                            return Some(Err(ParseError::InvalidKeyValue(s.to_string())));
                         }
                     },
                 },
             }
         }
 
-        Ok(blocks)
-    }
-
-    fn select_block_type(line: &str) -> Result<BlockType, ParseError> {
-        match line {
-            "info {" => Ok(BlockType::Info),
-            "programstatus {" => Ok(BlockType::Program),
-            "hoststatus {" => Ok(BlockType::Host),
-            "servicestatus {" => Ok(BlockType::Service),
-            "contactstatus {" => Ok(BlockType::Contact),
-            _ => Err(ParseError::UnexpectedLine(line.to_string())),
+        if tmp_block.key_values.keys().count() > 0 {
+            return Some(Err(ParseError::UnexpectedEndOfLine));
         }
+
+        return None;
     }
 }
 
@@ -104,107 +125,134 @@ impl Block {
 mod tests {
     use super::*;
 
-    const STATUS_DAT: &str = r#"
-    info {
-        created=123456789
-        version=9.99
-    }
-
-    programstatus {
-        daemon_mode=1
-        nagios_pid=99999
-    }
-
-    hoststatus {
-        host_name=web01
-        notifications_enabled=1
-        active_checks_enabled=1
-        passive_checks_enabled=1
-        obsess=1
-        event_handler_enabled=1
-        flap_detection_enabled=1
-    }
-
-    servicestatus {
-        host_name=web01
-        service_description=PING
-        notifications_enabled=1
-        active_checks_enabled=1
-        passive_checks_enabled=1
-        check_command=hoge
-        obsess=1
-        event_handler_enabled=1
-        flap_detection_enabled=1
-
-    }
-
-    contactstatus {
-        contact_name=nagiosadmin
-        modified_attributes=0
+    #[test]
+    fn test_to_blocks() {
+        let status_text = r#"
+        info {
+            created=123456789
+            version=9.99
         }
     
-    "#;
+        programstatus {
+            daemon_mode=1
+            nagios_pid=99999
+        }
+    
+        hoststatus {
+            host_name=web01
+            notifications_enabled=1
+            active_checks_enabled=1
+            passive_checks_enabled=1
+            obsess=1
+            event_handler_enabled=1
+            flap_detection_enabled=1
+        }
+    
+        servicestatus {
+            host_name=web01
+            service_description=PING
+            notifications_enabled=1
+            active_checks_enabled=1
+            passive_checks_enabled=1
+            check_command=hoge
+            obsess=1
+            event_handler_enabled=1
+            flap_detection_enabled=1
+    
+        }
+    
+        contactstatus {
+            contact_name=nagiosadmin
+            modified_attributes=0
+            }
+        
+        "#;
+
+        let buf = io::BufReader::new(status_text.as_bytes());
+        let blocks = Block::to_blocks(buf);
+        assert_eq!(blocks.count(), 5)
+    }
 
     #[test]
-    fn parse() {
-        let buf = io::BufReader::new(STATUS_DAT.as_bytes());
-        let blocks = Block::parse(buf).unwrap();
+    fn test_to_blocks_error() {
+        let status_text = r#"
+        info {
+            created=123456789
+            version=9.99
+        }
+    
+        programstatus {
+            daemon_mode=1
+            nagios_pid=99999
+        }
+    
+        hoststatus {
+            host_name=web01
+            notifications_enabled=1
+            active_checks_enabled=1
+            passive_checks_enabled=1
+            obsess=1
+            event_handler_enabled=1
+            flap_detection_enabled=1
+        "#;
 
-        // info
-        let expected = HashMap::from([
-            ("created".to_string(), "123456789".to_string()),
-            ("version".to_string(), "9.99".to_string()),
-        ]);
-        let block = blocks.get(0).unwrap();
-        assert_eq!(block.block_type, BlockType::Info);
-        assert_eq!(block.key_values, expected);
+        let buf = io::BufReader::new(status_text.as_bytes());
+        let blocks = Block::to_blocks(buf);
+        let blocks = blocks.collect::<Result<Vec<_>, _>>();
+        assert_eq!(blocks.is_err(), true);
+    }
 
-        // program
-        let expected = HashMap::from([
-            ("daemon_mode".to_string(), "1".to_string()),
-            ("nagios_pid".to_string(), "99999".to_string()),
-        ]);
-        let block = blocks.get(1).unwrap();
-        assert_eq!(block.block_type, BlockType::Program);
-        assert_eq!(block.key_values, expected);
+    #[test]
+    fn test_to_blocks_error_unexpected_line() {
+        let status_text = r#"
+        unexpected_block {
+            created=123456789
+            version=9.99
+        }
+        "#;
 
-        // host
-        let expected = HashMap::from([
-            ("host_name".to_string(), "web01".to_string()),
-            ("notifications_enabled".to_string(), "1".to_string()),
-            ("active_checks_enabled".to_string(), "1".to_string()),
-            ("passive_checks_enabled".to_string(), "1".to_string()),
-            ("obsess".to_string(), "1".to_string()),
-            ("event_handler_enabled".to_string(), "1".to_string()),
-            ("flap_detection_enabled".to_string(), "1".to_string()),
-        ]);
-        let block = blocks.get(2).unwrap();
-        assert_eq!(block.block_type, BlockType::Host);
-        assert_eq!(block.key_values, expected);
+        let buf = io::BufReader::new(status_text.as_bytes());
+        let blocks = Block::to_blocks(buf);
+        let blocks = blocks.collect::<Result<Vec<_>, _>>();
+        assert_eq!(blocks.is_err(), true);
+        assert_eq!(
+            blocks.unwrap_err(),
+            ParseError::UnexpectedLine("unexpected_block {".to_string())
+        );
+    }
 
-        // services
-        let expected = HashMap::from([
-            ("host_name".to_string(), "web01".to_string()),
-            ("service_description".to_string(), "PING".to_string()),
-            ("notifications_enabled".to_string(), "1".to_string()),
-            ("active_checks_enabled".to_string(), "1".to_string()),
-            ("passive_checks_enabled".to_string(), "1".to_string()),
-            ("check_command".to_string(), "hoge".to_string()),
-            ("obsess".to_string(), "1".to_string()),
-            ("event_handler_enabled".to_string(), "1".to_string()),
-            ("flap_detection_enabled".to_string(), "1".to_string()),
-        ]);
-        let block = blocks.get(3).unwrap();
-        assert_eq!(block.block_type, BlockType::Service);
-        assert_eq!(block.key_values, expected);
+    #[test]
+    fn test_to_blocks_error_invalid_key_value() {
+        let status_text = r#"
+        hoststatus {
+            created=123456789
+            version=9.99
+            error_line
+        }
+        "#;
 
-        // contacts
-        let expected = HashMap::from([
-            ("contact_name".to_string(), "nagiosadmin".to_string()),
-            ("modified_attributes".to_string(), "0".to_string()),
-        ]);
-        let block = blocks.get(4).unwrap();
-        assert_eq!(block.block_type, BlockType::Contact);
-        assert_eq!(block.key_values, expected);
+        let buf = io::BufReader::new(status_text.as_bytes());
+        let blocks = Block::to_blocks(buf);
+        let blocks = blocks.collect::<Result<Vec<_>, _>>();
+        assert_eq!(blocks.is_err(), true);
+        assert_eq!(
+            blocks.unwrap_err(),
+            ParseError::InvalidKeyValue("error_line".to_string())
+        );
+    }
+
+    #[test]
+    fn test_to_blocks_unexpexted_end_of_line() {
+        let status_text = r#"
+        hoststatus {
+            created=123456789
+            version=9.99
+        "#;
+
+        let buf = io::BufReader::new(status_text.as_bytes());
+        let blocks = Block::to_blocks(buf);
+        let blocks = blocks.collect::<Result<Vec<_>, _>>();
+        assert_eq!(blocks.is_err(), true);
+        assert_eq!(blocks.unwrap_err(), ParseError::UnexpectedEndOfLine);
     }
 }
