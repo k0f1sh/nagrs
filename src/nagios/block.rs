@@ -52,9 +52,20 @@ impl<'a> Block {
         buf: io::BufReader<R>,
     ) -> impl Iterator<Item = Result<Block, ParseError>> + 'a {
         let iter = buf
-            .lines()
-            .filter(|r| r.is_ok())
-            .map(|r| r.unwrap())
+            .split(b'\n')
+            .filter(|byteline| byteline.is_ok())
+            .map(|byteline| {
+                let byteline = byteline.unwrap();
+                match std::str::from_utf8(&byteline) {
+                    Ok(s) => {
+                        s.to_string()
+                    },
+                    Err(_) => {
+                        let cow = String::from_utf8_lossy(&byteline);
+                        cow.to_string()
+                    },
+                }
+            })
             .map(|line| line.trim().to_owned())
             .filter(|line| line.len() > 0)
             .filter(|line| line.chars().nth(0).unwrap() != '#');
